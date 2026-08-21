@@ -16,6 +16,11 @@
 			path = hackharvard;
 			sourceTree = "<group>";
 		};
+		328590F53038BC5300ED67B9 /* Plans */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Plans;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -32,6 +37,7 @@
 		328590D43038BA8D00ED67B9 = {
 			isa = PBXGroup;
 			children = (
+				328590F53038BC5300ED67B9 /* Plans */,
 				328590DF3038BA8D00ED67B9 /* hackharvard */,
 				328590DE3038BA8D00ED67B9 /* Products */,
 			);
@@ -62,6 +68,7 @@
 			);
 			fileSystemSynchronizedGroups = (
 				328590DF3038BA8D00ED67B9 /* hackharvard */,
+				328590F53038BC5300ED67B9 /* Plans */,
 			);
 			name = hackharvard;
 			packageProductDependencies = (
