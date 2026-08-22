@@ -2,6 +2,8 @@ from pathlib import Path
 
 import av
 import cv2
+import numpy as np
+import pytest
 
 from app.pipeline.rgb import extract_rgb_trace
 
@@ -35,3 +37,18 @@ def test_extract_rgb_trace_on_known_face_clip(tmp_path):
     assert result["duration_s"] > 0
     assert len(result["rgb_head"]) == 5
     assert len(result["rgb_head"][0]) == 3
+
+
+def test_extract_rgb_trace_returns_arrays_for_pos(tmp_path):
+    clip = tmp_path / "face.mp4"
+    _still_clip(clip)
+    result = extract_rgb_trace(str(clip))
+    rgb = result["rgb"]
+    t = result["t"]
+    assert isinstance(rgb, np.ndarray)
+    assert rgb.ndim == 2
+    assert rgb.shape == (result["n_samples"], 3)
+    assert isinstance(t, np.ndarray)
+    assert t.shape == (result["n_samples"],)
+    assert float(t[0]) == 0.0
+    assert result["fs"] == pytest.approx((len(t) - 1) / float(t[-1]))

@@ -147,6 +147,8 @@ def extract_rgb_trace(video_path: str) -> dict:
         "n_reused": n_reused,
         "duration_s": duration,
         "fs": fs,
+        "t": t_uniform,
+        "rgb": resampled,
         "rgb_mean": resampled.mean(axis=0).tolist(),
         "rgb_std": resampled.std(axis=0).tolist(),
         "rgb_head": resampled[:5].tolist(),

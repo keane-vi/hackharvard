@@ -2,15 +2,33 @@ import tempfile
 from pathlib import Path
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi.responses import JSONResponse
 
-from app.pipeline import extract_rgb_trace
+from app.pipeline.estimate import ProcessError, estimate_vitals
+from app.pipeline.rgb import extract_rgb_trace
 
-DISCLAIMER = (
-    "This is a product estimate, not a clinical diagnosis "
-    "or a replacement for a medical device."
+DEBUG_RGB_KEYS = (
+    "n_frames",
+    "n_samples",
+    "n_face",
+    "n_reused",
+    "duration_s",
+    "fs",
+    "rgb_mean",
+    "rgb_std",
+    "rgb_head",
 )
 
 app = FastAPI()
+
+
+async def _save_upload(video: UploadFile) -> str:
+    suffix = Path(video.filename or "clip.mp4").suffix or ".mp4"
+    contents = await video.read()
+    tmp = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
+    tmp.write(contents)
+    tmp.close()
+    return tmp.name
 
 
 @app.get("/health")
@@ -20,38 +38,25 @@ def health():
 
 @app.post("/debug/rgb")
 async def debug_rgb(video: UploadFile = File(...)):
-    suffix = Path(video.filename or "clip.mp4").suffix or ".mp4"
-    contents = await video.read()
-    tmp = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
+    tmp_path = await _save_upload(video)
     try:
-        tmp.write(contents)
-        tmp.close()
-        return extract_rgb_trace(tmp.name)
+        trace = extract_rgb_trace(tmp_path)
+        return {key: trace[key] for key in DEBUG_RGB_KEYS}
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     finally:
-        Path(tmp.name).unlink(missing_ok=True)
+        Path(tmp_path).unlink(missing_ok=True)
 
 
 @app.post("/v1/process")
 async def process_video(video: UploadFile = File(...)):
-    _ = await video.read()
-    return {
-        "hr_bpm": 72.0,
-        "prv_sdnn_ms": None,
-        "prv_rmssd_ms": None,
-        "rr_brpm": None,
-        "spo2_pct": None,
-        "quality": {
-            "hr": "ok",
-            "prv": "unavailable",
-            "rr": "unavailable",
-            "spo2": "unavailable",
-        },
-        "meta": {
-            "duration_s": None,
-            "fs": None,
-            "disclaimer": DISCLAIMER,
-        },
-        "error": None,
-    }
+    tmp_path = await _save_upload(video)
+    try:
+        return estimate_vitals(tmp_path)
+    except ProcessError as exc:
+        return JSONResponse(
+            status_code=400,
+            content={"error": exc.code, "message": exc.message},
+        )
+    finally:
+        Path(tmp_path).unlink(missing_ok=True)
