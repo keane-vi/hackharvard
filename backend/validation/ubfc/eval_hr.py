@@ -110,10 +110,20 @@ def _collect_dataset1_flat(rows: list) -> None:
     rows.append(_evaluate("dataset1_flat", video, load_gt_dataset1(gt_path)))
 
 
+def _collect_dataset2_flat(rows: list) -> None:
+    """A single vid2.avi + ground_truth.txt dropped directly in this folder."""
+    video = HERE / "vid2.avi"
+    gt_path = HERE / "ground_truth.txt"
+    if not video.exists() or not gt_path.exists():
+        return
+    rows.append(_evaluate("dataset2_flat", video, load_gt_dataset2(gt_path)))
+
+
 def main() -> int:
     rows: list[dict] = []
     _collect_dataset2(rows)
     _collect_dataset1_flat(rows)
+    _collect_dataset2_flat(rows)
 
     if not rows:
         print("No subjects with a video + matching ground truth found.")
