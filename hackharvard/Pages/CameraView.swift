@@ -7,9 +7,7 @@ import UniformTypeIdentifiers
 struct CameraView: View {
     @State private var isShowingCameraRecorder = false
     @State private var photosPickerItem: PhotosPickerItem?
-    @State private var uploadedVideoURL: URL?
     @State private var uploadedVideoThumbnail: UIImage?
-    @State private var recordedVideoURL: URL?
     @State private var isShowingCameraUnavailableAlert = false
     @State private var cameraUnavailableMessage = ""
 
@@ -19,7 +17,7 @@ struct CameraView: View {
                 .font(.largeTitle.bold())
 
             PhotosPicker(selection: $photosPickerItem, matching: .videos) {
-                uploadFieldContent
+                uploadField
             }
 
             Button {
@@ -38,8 +36,7 @@ struct CameraView: View {
             Text(cameraUnavailableMessage)
         }
         .fullScreenCover(isPresented: $isShowingCameraRecorder) {
-            VideoRecorderView(maxDuration: 45) { url in
-                recordedVideoURL = url
+            VideoRecorderView(maxDuration: 45) { _ in
                 isShowingCameraRecorder = false
             } onCancel: {
                 isShowingCameraRecorder = false
@@ -49,14 +46,13 @@ struct CameraView: View {
         .onChange(of: photosPickerItem) { _, newItem in
             Task {
                 guard let movie = try? await newItem?.loadTransferable(type: Movie.self) else { return }
-                uploadedVideoURL = movie.url
                 uploadedVideoThumbnail = await Self.generateThumbnail(for: movie.url)
             }
         }
     }
 
     @ViewBuilder
-    private var uploadFieldContent: some View {
+    private var uploadField: some View {
         if let uploadedVideoThumbnail {
             Image(uiImage: uploadedVideoThumbnail)
                 .resizable()
