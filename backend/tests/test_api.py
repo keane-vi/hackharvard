@@ -12,6 +12,7 @@ MOCK_TRACE = {
     "n_samples": 90,
     "n_face": 88,
     "n_reused": 2,
+    "n_artifact": 0,
     "duration_s": 3.0,
     "fs": 30.0,
     "rgb_mean": [0.0, 0.0, 0.0],
@@ -24,6 +25,7 @@ PROCESS_TRACE = {
     "n_samples": 120,
     "n_face": 118,
     "n_reused": 2,
+    "n_artifact": 0,
     "duration_s": 4.0,
     "fs": 30.0,
     "rgb": np.ones((120, 3), dtype=np.float64),
@@ -65,7 +67,7 @@ def test_process_marks_hr_unavailable_when_quality_fails():
         patch("app.pipeline.estimate.extract_rgb_trace", return_value=PROCESS_TRACE),
         patch("app.pipeline.estimate.pos", return_value=np.ones(120)),
         patch("app.pipeline.estimate.pulse_snr", return_value=0.1),
-        patch("app.pipeline.estimate.motion_score", return_value=0.8),
+        patch("app.pipeline.estimate.motion_score", return_value=0.3),
         patch("app.pipeline.estimate.hr_quality_ok", return_value=False),
         patch("app.pipeline.estimate.heart_rate_bpm", return_value=81.5),
     ):
@@ -82,7 +84,7 @@ def test_process_quality_ok_when_windowed_hr_agrees():
         patch("app.pipeline.estimate.extract_rgb_trace", return_value=PROCESS_TRACE),
         patch("app.pipeline.estimate.pos", return_value=np.ones(120)),
         patch("app.pipeline.estimate.pulse_snr", return_value=0.1),
-        patch("app.pipeline.estimate.motion_score", return_value=0.8),
+        patch("app.pipeline.estimate.motion_score", return_value=0.3),
         patch("app.pipeline.estimate.hr_quality_ok", return_value=False),
         patch("app.pipeline.estimate.robust_heart_rate", return_value=73.8),
         patch("app.pipeline.estimate.heart_rate_bpm", return_value=81.5),
@@ -93,6 +95,20 @@ def test_process_quality_ok_when_windowed_hr_agrees():
     assert body["hr_bpm"] == 73.8
     assert body["quality"]["hr"] == "ok"
     assert body["error"] is None
+
+
+def test_process_too_much_motion_is_rejected_before_pos():
+    corrupted_trace = dict(PROCESS_TRACE, n_reused=70, n_artifact=10, n_frames=120)
+    with (
+        patch("app.pipeline.estimate.extract_rgb_trace", return_value=corrupted_trace),
+        patch("app.pipeline.estimate.pos") as mock_pos,
+    ):
+        response = _post_video()
+    body = response.json()
+    assert response.status_code == 400
+    assert body["error"] == "too_much_motion"
+    assert "message" in body
+    mock_pos.assert_not_called()
 
 
 def test_process_too_few_skin_samples_is_no_face():

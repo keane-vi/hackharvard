@@ -1,7 +1,7 @@
 from .hr import heart_rate_bpm
 from .pos import pos
 from .prv import estimate_prv
-from .quality import hr_quality_ok, motion_score, pulse_snr
+from .quality import TOO_MUCH_MOTION_MAX, hr_quality_ok, motion_score, pulse_snr
 from .rgb import extract_rgb_trace
 from .robust_hr import robust_heart_rate
 
@@ -54,10 +54,16 @@ def estimate_vitals(video_path: str) -> dict:
     except Exception as exc:
         raise ProcessError("invalid_file", "Could not read the uploaded file.") from exc
 
+    motion = motion_score(trace["n_reused"], trace["n_frames"], trace.get("n_artifact", 0))
+    if motion > TOO_MUCH_MOTION_MAX:
+        raise ProcessError(
+            "too_much_motion",
+            "Too much motion or a lighting change during the clip to get a reliable reading.",
+        )
+
     try:
         pulse = pos(trace["rgb"], trace["fs"])
         snr = pulse_snr(pulse, trace["fs"])
-        motion = motion_score(trace["n_reused"], trace["n_frames"])
         robust = robust_heart_rate(trace)
         hr_bpm = float(robust if robust is not None else heart_rate_bpm(pulse, trace["fs"]))
         hr_ok = robust is not None or hr_quality_ok(snr, motion)

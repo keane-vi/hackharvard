@@ -4,6 +4,7 @@ from app.pipeline.hr import HR_BAND_HZ, bandpass_cardiac
 
 SNR_MIN = 0.5
 MOTION_MAX = 0.25
+TOO_MUCH_MOTION_MAX = 0.5
 IBI_CV_MAX = 0.12
 MIN_CONSISTENT_IBIS = 15
 _PEAK_BINS = 3
@@ -31,10 +32,10 @@ def pulse_snr(pulse: np.ndarray, fs: float) -> float:
     return signal / noise
 
 
-def motion_score(n_reused: int, n_frames: int) -> float:
+def motion_score(n_reused: int, n_frames: int, n_artifact: int = 0) -> float:
     if n_frames <= 0:
         return 1.0
-    return n_reused / n_frames
+    return (n_reused + n_artifact) / n_frames
 
 
 def hr_quality_ok(snr: float, motion: float) -> bool:

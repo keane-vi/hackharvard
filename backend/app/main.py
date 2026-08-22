@@ -13,6 +13,7 @@ DEBUG_RGB_KEYS = (
     "n_samples",
     "n_face",
     "n_reused",
+    "n_artifact",
     "duration_s",
     "fs",
     "rgb_mean",

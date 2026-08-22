@@ -17,6 +17,22 @@ SKIN_UPPER = np.array([255, 173, 127], dtype=np.uint8)
 BOX_HALF = 18
 MAX_SIDE = 480
 
+# Illumination-jump rejection: a sudden global brightness/white-balance change
+# (auto-exposure hunting, a light flicking on) moves R, G, and B together by an
+# amount far larger than any real cardiac-driven fluctuation. Flag samples that
+# jump too far from a short rolling robust baseline and treat them like a
+# dropped frame (reuse the last good sample) instead of letting them dominate
+# the POS pulse.
+ARTIFACT_HISTORY = 90
+ARTIFACT_MIN_HISTORY = 10
+ARTIFACT_Z = 6.0
+ARTIFACT_MAD_FLOOR = 1.0
+ARTIFACT_MIN_ABS_DELTA = 8.0
+# A rejection streak longer than this (~3s at 30fps) means the "artifact" is
+# actually a sustained lighting change, not a transient - stop rejecting and
+# resync the baseline instead of discarding the rest of the clip.
+ARTIFACT_MAX_STREAK = 90
+
 
 def _downscale(bgr: np.ndarray) -> np.ndarray:
     h, w = bgr.shape[:2]
@@ -120,6 +136,25 @@ def _box_from_ids(landmarks, ids, w, h):
     return x1, y1, x2, y2
 
 
+def _is_illumination_artifact(sample: np.ndarray, history: list) -> bool:
+    if len(history) < ARTIFACT_MIN_HISTORY:
+        return False
+    hist = np.asarray(history, dtype=np.float64)
+    med = np.median(hist, axis=0)
+    deviation = np.abs(sample - med)
+    mad = np.median(np.abs(hist - med), axis=0)
+    # Floor MAD at a realistic noise level (RGB units) rather than ~0: near-static
+    # footage (or a lossily re-encoded still frame) can have near-zero real
+    # variation, and dividing by a near-zero MAD turns trivial codec noise into
+    # a huge z-score. A real illumination jump is tens of RGB units, far above
+    # this floor either way.
+    mad = np.where(mad < ARTIFACT_MAD_FLOOR, ARTIFACT_MAD_FLOOR, mad)
+    z = 0.6745 * deviation / mad
+    # Require the deviation to also be large in absolute terms so the floor
+    # above can't be gamed by z-score alone on a channel that barely moved.
+    return bool(np.any((z > ARTIFACT_Z) & (deviation > ARTIFACT_MIN_ABS_DELTA)))
+
+
 def _mean_rgb_in_box(bgr, box):
     x1, y1, x2, y2 = box
     patch = bgr[y1:y2, x1:x2]
@@ -141,9 +176,12 @@ def extract_rgb_trace(video_path: str) -> dict:
     region_lists = [[], [], []]
     last_rgb = None
     last_regions = [None, None, None]
+    history = []
+    artifact_streak = 0
     n_frames = 0
     n_face = 0
     n_reused = 0
+    n_artifact = 0
 
     tracker = _FaceTracker()
     container = av.open(str(path))
@@ -171,11 +209,34 @@ def extract_rgb_trace(video_path: str) -> dict:
                 if present:
                     sample = np.mean(present, axis=0)
 
+            is_artifact = False
+            if sample is not None and _is_illumination_artifact(sample, history):
+                if artifact_streak < ARTIFACT_MAX_STREAK:
+                    # Brief transient (a flicker, a momentary flare): reject it.
+                    is_artifact = True
+                    artifact_streak += 1
+                    n_artifact += 1
+                    sample = None
+                    region_now = [None, None, None]
+                else:
+                    # Rejected for too long in a row: this isn't a transient,
+                    # it's a sustained lighting change. Stop fighting it and
+                    # resync the baseline to the new normal.
+                    history = []
+                    artifact_streak = 0
+            elif sample is not None:
+                artifact_streak = 0
+
             if sample is None:
                 if last_rgb is None:
                     continue
                 sample = last_rgb
-                n_reused += 1
+                if not is_artifact:
+                    n_reused += 1
+            else:
+                history.append(sample)
+                if len(history) > ARTIFACT_HISTORY:
+                    history.pop(0)
 
             last_rgb = sample
             for i, value in enumerate(region_now):
@@ -218,6 +279,7 @@ def extract_rgb_trace(video_path: str) -> dict:
         "n_samples": n,
         "n_face": n_face,
         "n_reused": n_reused,
+        "n_artifact": n_artifact,
         "duration_s": duration,
         "fs": fs,
         "t": t_uniform,

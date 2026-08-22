@@ -1,8 +1,10 @@
 import numpy as np
+import pytest
 
 from app.pipeline.quality import (
     MOTION_MAX,
     SNR_MIN,
+    TOO_MUCH_MOTION_MAX,
     hr_quality_ok,
     interval_consistency_ok,
     motion_score,
@@ -34,6 +36,18 @@ def test_many_reused_frames_fails_motion_gate():
     motion = motion_score(n_reused=80, n_frames=100)
     assert motion > MOTION_MAX
     assert not hr_quality_ok(snr=100.0, motion=motion)
+
+
+def test_motion_score_counts_illumination_artifacts_too():
+    without_artifacts = motion_score(n_reused=10, n_frames=100)
+    with_artifacts = motion_score(n_reused=10, n_frames=100, n_artifact=15)
+    assert without_artifacts == pytest.approx(0.10)
+    assert with_artifacts == pytest.approx(0.25)
+
+
+def test_heavily_corrupted_clip_exceeds_too_much_motion_threshold():
+    motion = motion_score(n_reused=10, n_frames=100, n_artifact=45)
+    assert motion > TOO_MUCH_MOTION_MAX
 
 
 def test_interval_consistency_rejects_high_cv():
