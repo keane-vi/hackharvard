@@ -289,55 +289,197 @@ private struct Movie: Transferable {
     }
 }
 
-// MARK: - Video recorder picker
+// MARK: - Video recorder
 
-// SwiftUI has no native camera view, so this wraps the old UIKit picker to get one.
+// UIImagePickerController's camera is a black-box system UI with no access to
+// AVCaptureDevice, so there is no way to lock exposure/white balance through
+// it. rPPG needs a steady exposure - a camera left on continuous auto-exposure
+// keeps "hunting" for a correct brightness throughout the recording, and that
+// hunting shows up as a real brightness oscillation on top of the much
+// smaller pulse-driven color change POS is trying to measure. This wraps a
+// custom AVCaptureSession instead so exposure and white balance can be locked
+// once they settle, right before recording starts.
 private struct VideoRecorderView: UIViewControllerRepresentable {
     let maxDuration: TimeInterval
     let onFinish: (URL) -> Void
     let onCancel: () -> Void
 
-    func makeUIViewController(context: Context) -> UIImagePickerController {
-        let picker = UIImagePickerController()
-        picker.sourceType = .camera
-        picker.mediaTypes = [UTType.movie.identifier]
-        picker.cameraCaptureMode = .video
-        picker.cameraDevice = .rear
-        picker.videoMaximumDuration = maxDuration
-        picker.videoQuality = .typeMedium
-        picker.delegate = context.coordinator
-        return picker
+    func makeUIViewController(context: Context) -> CaptureViewController {
+        let controller = CaptureViewController()
+        controller.maxDuration = maxDuration
+        controller.onFinish = onFinish
+        controller.onCancel = onCancel
+        return controller
     }
 
-    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
+    func updateUIViewController(_ uiViewController: CaptureViewController, context: Context) {}
+}
 
-    func makeCoordinator() -> Coordinator {
-        Coordinator(onFinish: onFinish, onCancel: onCancel)
+final class CaptureViewController: UIViewController, AVCaptureFileOutputRecordingDelegate {
+    var maxDuration: TimeInterval = 45
+    var onFinish: ((URL) -> Void)?
+    var onCancel: (() -> Void)?
+
+    private let session = AVCaptureSession()
+    private let movieOutput = AVCaptureMovieFileOutput()
+    private var previewLayer: AVCaptureVideoPreviewLayer?
+    private weak var captureDevice: AVCaptureDevice?
+    private var recordButton: UIButton!
+    private var isRecording = false
+    private var didFinish = false
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .black
+        configureSession()
+        setupPreviewLayer()
+        setupControls()
     }
 
-    final class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
-        let onFinish: (URL) -> Void
-        let onCancel: () -> Void
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        previewLayer?.frame = view.bounds
+    }
 
-        init(onFinish: @escaping (URL) -> Void, onCancel: @escaping () -> Void) {
-            self.onFinish = onFinish
-            self.onCancel = onCancel
+    private func configureSession() {
+        session.beginConfiguration()
+        if session.canSetSessionPreset(.hd1280x720) {
+            session.sessionPreset = .hd1280x720
         }
 
-        func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
-            picker.dismiss(animated: true) {
-                if let url = info[.mediaURL] as? URL {
-                    self.onFinish(url)
-                } else {
-                    self.onCancel()
+        guard
+            let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back),
+            let input = try? AVCaptureDeviceInput(device: device)
+        else {
+            session.commitConfiguration()
+            return
+        }
+        captureDevice = device
+
+        if session.canAddInput(input) {
+            session.addInput(input)
+        }
+        if session.canAddOutput(movieOutput) {
+            session.addOutput(movieOutput)
+        }
+        if let connection = movieOutput.connection(with: .video), connection.isVideoRotationAngleSupported(90) {
+            connection.videoRotationAngle = 90
+        }
+        session.commitConfiguration()
+    }
+
+    private func setupPreviewLayer() {
+        let layer = AVCaptureVideoPreviewLayer(session: session)
+        layer.videoGravity = .resizeAspectFill
+        layer.frame = view.bounds
+        view.layer.addSublayer(layer)
+        previewLayer = layer
+
+        DispatchQueue.global(qos: .userInitiated).async { [session] in
+            session.startRunning()
+        }
+    }
+
+    private func setupControls() {
+        let cancelButton = UIButton(type: .system)
+        cancelButton.setTitle("Cancel", for: .normal)
+        cancelButton.setTitleColor(.white, for: .normal)
+        cancelButton.addTarget(self, action: #selector(cancelTapped), for: .touchUpInside)
+        cancelButton.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(cancelButton)
+
+        let recordButton = UIButton(type: .system)
+        recordButton.setTitle("Record", for: .normal)
+        recordButton.setTitleColor(.white, for: .normal)
+        recordButton.backgroundColor = UIColor.systemRed.withAlphaComponent(0.85)
+        recordButton.layer.cornerRadius = 35
+        recordButton.addTarget(self, action: #selector(recordTapped), for: .touchUpInside)
+        recordButton.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(recordButton)
+        self.recordButton = recordButton
+
+        NSLayoutConstraint.activate([
+            cancelButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16),
+            cancelButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
+
+            recordButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -24),
+            recordButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            recordButton.widthAnchor.constraint(equalToConstant: 70),
+            recordButton.heightAnchor.constraint(equalToConstant: 70),
+        ])
+    }
+
+    @objc private func cancelTapped() {
+        session.stopRunning()
+        finishOnce { self.onCancel?() }
+    }
+
+    @objc private func recordTapped() {
+        if isRecording {
+            movieOutput.stopRecording()
+            return
+        }
+        recordButton.isEnabled = false
+        lockExposureAndWhiteBalance { [weak self] in
+            guard let self else { return }
+            let outputURL = FileManager.default.temporaryDirectory
+                .appendingPathComponent(UUID().uuidString)
+                .appendingPathExtension("mov")
+            self.movieOutput.maxRecordedDuration = CMTime(seconds: self.maxDuration, preferredTimescale: 600)
+            self.movieOutput.startRecording(to: outputURL, recordingDelegate: self)
+            self.isRecording = true
+            self.recordButton.isEnabled = true
+            self.recordButton.setTitle("Stop", for: .normal)
+        }
+    }
+
+    // Auto exposure/white balance need a moment to converge on the actual
+    // scene before they're frozen - locking immediately would just freeze
+    // whatever transient starting values the camera hadn't settled on yet.
+    private func lockExposureAndWhiteBalance(completion: @escaping () -> Void) {
+        guard let device = captureDevice else {
+            completion()
+            return
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+            defer { completion() }
+            guard self != nil else { return }
+            do {
+                try device.lockForConfiguration()
+                if device.isExposureModeSupported(.locked) {
+                    device.exposureMode = .locked
                 }
+                if device.isWhiteBalanceModeSupported(.locked) {
+                    device.whiteBalanceMode = .locked
+                }
+                device.unlockForConfiguration()
+            } catch {
+                // Recording still proceeds even if the lock itself failed -
+                // an unlocked-but-recorded clip beats no clip at all.
             }
         }
+    }
 
-        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
-            picker.dismiss(animated: true) {
-                self.onCancel()
-            }
+    private func finishOnce(_ action: () -> Void) {
+        guard !didFinish else { return }
+        didFinish = true
+        action()
+    }
+
+    func fileOutput(
+        _ output: AVCaptureFileOutput,
+        didFinishRecordingTo outputFileURL: URL,
+        from connections: [AVCaptureConnection],
+        error: Error?
+    ) {
+        isRecording = false
+        recordButton.setTitle("Record", for: .normal)
+        session.stopRunning()
+        if error == nil {
+            finishOnce { self.onFinish?(outputFileURL) }
+        } else {
+            finishOnce { self.onCancel?() }
         }
     }
 }

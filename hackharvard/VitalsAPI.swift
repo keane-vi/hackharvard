@@ -45,7 +45,7 @@ struct VitalsAPIError: Decodable, Error {
 enum VitalsAPI {
     // Local Windows backend. Phone and this PC must be on the same Wi-Fi.
     // Render is not used. Update the IP if `ipconfig` changes.
-    static var baseURL = URL(string: "http://172.20.10.6:8000")!
+    static var baseURL = URL(string: "http://172.20.10.7:8000")!
 
     private static let session: URLSession = {
         let config = URLSessionConfiguration.default
