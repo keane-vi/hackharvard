@@ -32,8 +32,6 @@ struct AuthError: Error, LocalizedError {
 }
 
 private struct StoredSession: Codable {
-    let accessToken: String
-    let refreshToken: String
     let userId: String
     let email: String?
 }
@@ -96,12 +94,7 @@ final class AuthManager: ObservableObject {
     }
 
     private func persist(_ response: AuthResponse) throws {
-        let stored = StoredSession(
-            accessToken: response.access_token,
-            refreshToken: response.refresh_token,
-            userId: response.user.id,
-            email: response.user.email
-        )
+        let stored = StoredSession(userId: response.user.id, email: response.user.email)
         let data = try JSONEncoder().encode(stored)
         UserDefaults.standard.set(data, forKey: defaultsKey)
         currentUser = response.user
