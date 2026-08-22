@@ -297,55 +297,263 @@ private struct Movie: Transferable {
     }
 }
 
-// MARK: - Video recorder picker
+// MARK: - Video recorder
 
-// SwiftUI has no native camera view, so this wraps the old UIKit picker to get one.
+// UIImagePickerController locks exposure/white-balance the instant it opens, before the
+// sensor has adjusted to the subject's skin tone — that miscalibrated first fraction of a
+// second is baked into the whole clip and throws off the rPPG signal. This wraps a manual
+// AVCaptureSession instead: it lets auto-exposure/auto-WB converge for a beat, locks them
+// so lighting doesn't drift mid-recording, and only then starts writing to disk.
 private struct VideoRecorderView: UIViewControllerRepresentable {
     let maxDuration: TimeInterval
     let onFinish: (URL) -> Void
     let onCancel: () -> Void
 
-    func makeUIViewController(context: Context) -> UIImagePickerController {
-        let picker = UIImagePickerController()
-        picker.sourceType = .camera
-        picker.mediaTypes = [UTType.movie.identifier]
-        picker.cameraCaptureMode = .video
-        picker.cameraDevice = .rear
-        picker.videoMaximumDuration = maxDuration
-        picker.videoQuality = .typeMedium
-        picker.delegate = context.coordinator
-        return picker
+    func makeUIViewController(context: Context) -> CustomCameraViewController {
+        let controller = CustomCameraViewController()
+        controller.maxDuration = maxDuration
+        controller.onFinish = onFinish
+        controller.onCancel = onCancel
+        return controller
     }
 
-    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
+    func updateUIViewController(_ uiViewController: CustomCameraViewController, context: Context) {}
+}
 
-    func makeCoordinator() -> Coordinator {
-        Coordinator(onFinish: onFinish, onCancel: onCancel)
+private final class CustomCameraViewController: UIViewController, AVCaptureFileOutputRecordingDelegate {
+    var maxDuration: TimeInterval = 45
+    var onFinish: ((URL) -> Void)?
+    var onCancel: (() -> Void)?
+
+    // ponytail: fixed convergence window, not a metered "confidence" check — tune this if devices still show a color/exposure shift at the start of clips.
+    private let convergenceDelay: TimeInterval = 0.6
+
+    private let session = AVCaptureSession()
+    private let movieOutput = AVCaptureMovieFileOutput()
+    private let sessionQueue = DispatchQueue(label: "camera.session.queue")
+    private var device: AVCaptureDevice?
+    private var previewLayer: AVCaptureVideoPreviewLayer?
+    private var cameraPosition: AVCaptureDevice.Position = .back
+
+    private let recordButton = UIButton(type: .system)
+    private let cancelButton = UIButton(type: .system)
+    private let switchCameraButton = UIButton(type: .system)
+    private let statusLabel = UILabel()
+    private let timerLabel = UILabel()
+
+    private var recordingTimer: Timer?
+    private var recordingStartDate: Date?
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .black
+        setUpPreviewAndControls()
+        sessionQueue.async { [weak self] in self?.configureSession() }
     }
 
-    final class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
-        let onFinish: (URL) -> Void
-        let onCancel: () -> Void
+    private func setUpPreviewAndControls() {
+        let previewLayer = AVCaptureVideoPreviewLayer(session: session)
+        previewLayer.videoGravity = .resizeAspectFill
+        previewLayer.frame = view.bounds
+        view.layer.addSublayer(previewLayer)
+        self.previewLayer = previewLayer
 
-        init(onFinish: @escaping (URL) -> Void, onCancel: @escaping () -> Void) {
-            self.onFinish = onFinish
-            self.onCancel = onCancel
+        statusLabel.text = "Preparing…"
+        statusLabel.textColor = .white
+        statusLabel.font = .preferredFont(forTextStyle: .subheadline)
+        statusLabel.textAlignment = .center
+        statusLabel.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(statusLabel)
+
+        recordButton.setTitle("Record", for: .normal)
+        recordButton.setTitleColor(.white, for: .normal)
+        recordButton.backgroundColor = UIColor.systemRed
+        recordButton.layer.cornerRadius = 30
+        recordButton.isEnabled = false
+        recordButton.alpha = 0.4
+        recordButton.translatesAutoresizingMaskIntoConstraints = false
+        recordButton.addTarget(self, action: #selector(recordTapped), for: .touchUpInside)
+        view.addSubview(recordButton)
+
+        cancelButton.setTitle("Cancel", for: .normal)
+        cancelButton.setTitleColor(.white, for: .normal)
+        cancelButton.translatesAutoresizingMaskIntoConstraints = false
+        cancelButton.addTarget(self, action: #selector(cancelTapped), for: .touchUpInside)
+        view.addSubview(cancelButton)
+
+        switchCameraButton.setImage(UIImage(systemName: "arrow.triangle.2.circlepath.camera"), for: .normal)
+        switchCameraButton.tintColor = .white
+        switchCameraButton.translatesAutoresizingMaskIntoConstraints = false
+        switchCameraButton.addTarget(self, action: #selector(switchCameraTapped), for: .touchUpInside)
+        view.addSubview(switchCameraButton)
+
+        timerLabel.text = "0:00"
+        timerLabel.textColor = .white
+        timerLabel.font = .monospacedDigitSystemFont(ofSize: 17, weight: .semibold)
+        timerLabel.isHidden = true
+        timerLabel.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(timerLabel)
+
+        NSLayoutConstraint.activate([
+            statusLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            statusLabel.bottomAnchor.constraint(equalTo: recordButton.topAnchor, constant: -16),
+
+            recordButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            recordButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -24),
+            recordButton.widthAnchor.constraint(equalToConstant: 120),
+            recordButton.heightAnchor.constraint(equalToConstant: 60),
+
+            cancelButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 12),
+            cancelButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
+
+            switchCameraButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 12),
+            switchCameraButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
+            switchCameraButton.widthAnchor.constraint(equalToConstant: 32),
+            switchCameraButton.heightAnchor.constraint(equalToConstant: 32),
+
+            timerLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            timerLabel.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 12),
+        ])
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        previewLayer?.frame = view.bounds
+    }
+
+    private func configureSession() {
+        session.beginConfiguration()
+        session.sessionPreset = .high
+
+        guard addCameraInput(position: cameraPosition) else {
+            session.commitConfiguration()
+            DispatchQueue.main.async { [weak self] in self?.onCancel?() }
+            return
         }
 
-        func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
-            picker.dismiss(animated: true) {
-                if let url = info[.mediaURL] as? URL {
-                    self.onFinish(url)
-                } else {
-                    self.onCancel()
-                }
-            }
+        guard session.canAddOutput(movieOutput) else {
+            session.commitConfiguration()
+            DispatchQueue.main.async { [weak self] in self?.onCancel?() }
+            return
         }
+        session.addOutput(movieOutput)
+        movieOutput.maxRecordedDuration = CMTime(seconds: maxDuration, preferredTimescale: 600)
 
-        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
-            picker.dismiss(animated: true) {
-                self.onCancel()
+        session.commitConfiguration()
+        session.startRunning()
+
+        beginConvergence()
+    }
+
+    // Must be called inside `session.beginConfiguration()`/`commitConfiguration()`.
+    private func addCameraInput(position: AVCaptureDevice.Position) -> Bool {
+        guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: position),
+              let input = try? AVCaptureDeviceInput(device: device),
+              session.canAddInput(input) else {
+            return false
+        }
+        session.addInput(input)
+        self.device = device
+        return true
+    }
+
+    // Auto-exposure/auto-WB are already running (their default mode) as soon as a camera
+    // input is added; give them `convergenceDelay` to settle on the subject before locking.
+    private func beginConvergence() {
+        sessionQueue.asyncAfter(deadline: .now() + convergenceDelay) { [weak self] in
+            self?.lockExposureAndWhiteBalance()
+        }
+    }
+
+    private func lockExposureAndWhiteBalance() {
+        guard let device else { return }
+        do {
+            try device.lockForConfiguration()
+            if device.isExposureModeSupported(.locked) {
+                device.exposureMode = .locked
             }
+            if device.isWhiteBalanceModeSupported(.locked) {
+                device.whiteBalanceMode = .locked
+            }
+            device.unlockForConfiguration()
+        } catch {
+            // Locking failed — recording still works, just without the stabilized exposure/WB.
+        }
+        DispatchQueue.main.async { [weak self] in
+            self?.statusLabel.text = "Ready"
+            self?.recordButton.isEnabled = true
+            self?.recordButton.alpha = 1
+        }
+    }
+
+    @objc private func recordTapped() {
+        if movieOutput.isRecording {
+            movieOutput.stopRecording()
+            stopRecordingTimer()
+            recordButton.setTitle("Record", for: .normal)
+            statusLabel.text = "Ready"
+            switchCameraButton.isHidden = false
+        } else {
+            let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).appendingPathExtension("mov")
+            movieOutput.startRecording(to: url, recordingDelegate: self)
+            startRecordingTimer()
+            recordButton.setTitle("Stop", for: .normal)
+            statusLabel.text = "Recording…"
+            switchCameraButton.isHidden = true
+        }
+    }
+
+    @objc private func switchCameraTapped() {
+        guard !movieOutput.isRecording else { return }
+        cameraPosition = cameraPosition == .back ? .front : .back
+
+        switchCameraButton.isEnabled = false
+        recordButton.isEnabled = false
+        recordButton.alpha = 0.4
+        statusLabel.text = "Preparing…"
+
+        sessionQueue.async { [weak self] in
+            guard let self else { return }
+            self.session.beginConfiguration()
+            if let currentInput = self.session.inputs.first {
+                self.session.removeInput(currentInput)
+            }
+            _ = self.addCameraInput(position: self.cameraPosition)
+            self.session.commitConfiguration()
+            self.beginConvergence()
+            DispatchQueue.main.async { self.switchCameraButton.isEnabled = true }
+        }
+    }
+
+    private func startRecordingTimer() {
+        recordingStartDate = Date()
+        timerLabel.text = "0:00"
+        timerLabel.isHidden = false
+        recordingTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            guard let self, let start = self.recordingStartDate else { return }
+            let seconds = Int(Date().timeIntervalSince(start))
+            self.timerLabel.text = String(format: "%d:%02d", seconds / 60, seconds % 60)
+        }
+    }
+
+    private func stopRecordingTimer() {
+        recordingTimer?.invalidate()
+        recordingTimer = nil
+        recordingStartDate = nil
+        timerLabel.isHidden = true
+    }
+
+    @objc private func cancelTapped() {
+        sessionQueue.async { [weak self] in self?.session.stopRunning() }
+        onCancel?()
+    }
+
+    func fileOutput(_ output: AVCaptureFileOutput, didFinishRecordingTo outputFileURL: URL, from connections: [AVCaptureConnection], error: Error?) {
+        sessionQueue.async { [weak self] in self?.session.stopRunning() }
+        if error == nil {
+            onFinish?(outputFileURL)
+        } else {
+            onCancel?()
         }
     }
 }
