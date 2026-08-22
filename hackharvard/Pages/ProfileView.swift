@@ -8,8 +8,19 @@
 import SwiftUI
 
 struct ProfileView: View {
+    @EnvironmentObject private var authManager: AuthManager
+
     var body: some View {
-        Text("Profile")
+        VStack(spacing: 16) {
+            Text("Profile")
+            if let email = authManager.currentUser?.email {
+                Text(email)
+                    .foregroundStyle(.secondary)
+            }
+            Button("Sign Out", role: .destructive) {
+                authManager.signOut()
+            }
+        }
     }
 }
 

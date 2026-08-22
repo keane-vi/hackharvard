@@ -2,9 +2,18 @@ import SwiftUI
 
 @main
 struct hackharvardApp: App {
+    @StateObject private var authManager = AuthManager()
+
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            Group {
+                if authManager.isSignedIn {
+                    ContentView()
+                } else {
+                    LoginView()
+                }
+            }
+            .environmentObject(authManager)
         }
     }
 }
