@@ -19,7 +19,7 @@ struct ContentView: View {
                 .tabItem {
                     Label("Insights", systemImage: "chart.bar")
                 }
-            ScanView()
+            CameraView()
                 .tabItem {
                     Label("Scan", systemImage: "camera")
                 }
