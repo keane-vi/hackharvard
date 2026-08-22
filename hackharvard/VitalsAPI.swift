@@ -56,13 +56,6 @@ enum VitalsAPI {
     }()
 
     static func process(videoAt fileURL: URL) async throws -> VitalsResponse {
-        let uploadURL = try await prepareVideoForUpload(at: fileURL)
-        defer {
-            if uploadURL != fileURL {
-                try? FileManager.default.removeItem(at: uploadURL)
-            }
-        }
-
         let healthURL = baseURL.appendingPathComponent("health")
         _ = try? await session.data(from: healthURL)
 
@@ -73,11 +66,12 @@ enum VitalsAPI {
         let boundary = UUID().uuidString
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
 
-        let videoData = try Data(contentsOf: uploadURL)
+        let videoData = try Data(contentsOf: fileURL)
+        let filename = fileURL.lastPathComponent
         var body = Data()
         body.append("--\(boundary)\r\n".data(using: .utf8)!)
-        body.append("Content-Disposition: form-data; name=\"video\"; filename=\"prepared-video.mp4\"\r\n".data(using: .utf8)!)
-        body.append("Content-Type: video/mp4\r\n\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"video\"; filename=\"\(filename)\"\r\n".data(using: .utf8)!)
+        body.append("Content-Type: video/quicktime\r\n\r\n".data(using: .utf8)!)
         body.append(videoData)
         body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
         request.httpBody = body
@@ -94,22 +88,5 @@ enum VitalsAPI {
         }
 
         return try JSONDecoder().decode(VitalsResponse.self, from: data)
-    }
-
-    private static func prepareVideoForUpload(at sourceURL: URL) async throws -> URL {
-        let asset = AVURLAsset(url: sourceURL)
-        guard let exporter = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetHEVC1920x1080) else {
-            return sourceURL
-        }
-
-        let outputURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("prepared-\(UUID().uuidString).mp4")
-        exporter.shouldOptimizeForNetworkUse = true
-
-        // The async export API owns the operation's concurrency and surfaces
-        // failures directly, avoiding the deprecated callback/status access.
-        try await exporter.export(to: outputURL, as: .mp4)
-
-        return outputURL
     }
 }
