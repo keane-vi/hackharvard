@@ -1,3 +1,10 @@
+//
+//  CameraView.swift
+//  hackharvard
+//
+//  Created by Nanond Nimitkul on 22/8/26.
+//
+
 import SwiftUI
 import PhotosUI
 import UIKit
@@ -5,110 +12,57 @@ import AVFoundation
 import UniformTypeIdentifiers
 
 struct CameraView: View {
-    @State private var isShowingCameraRecorder = false
+    var onBack: (() -> Void)? = nil
+    var onContinue: (URL) -> Void = { _ in }
+
+    @State private var selectedVideoURL: URL?
+    @State private var selectedVideoThumbnail: UIImage?
     @State private var photosPickerItem: PhotosPickerItem?
-    @State private var uploadedVideoThumbnail: UIImage?
+    @State private var isShowingCamera = false
     @State private var isShowingCameraUnavailableAlert = false
     @State private var cameraUnavailableMessage = ""
 
     var body: some View {
-        VStack(spacing: 24) {
-            Text("Scan")
-                .font(.largeTitle.bold())
-
-            PhotosPicker(selection: $photosPickerItem, matching: .videos) {
-                uploadField
+        ScrollView {
+            VStack(spacing: 0) {
+                topNavigationArea
+                headerSection
+                    .padding(.top, 28)
+                uploadArea
+                    .padding(.top, 32)
+                cameraAction
+                    .padding(.top, 20)
             }
-
-            Button {
-                requestCameraAccessAndShowRecorder()
-            } label: {
-                Label("Record Video (45s)", systemImage: "video.fill")
-                    .frame(maxWidth: .infinity)
-                    .padding()
-                    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12))
-            }
+            .padding(.horizontal, 20)
+            .padding(.bottom, 24)
         }
-        .padding()
+        .safeAreaInset(edge: .bottom) {
+            continueButton
+                .padding(.horizontal, 20)
+                .padding(.top, 12)
+                .padding(.bottom, 8)
+        }
         .alert("Camera Unavailable", isPresented: $isShowingCameraUnavailableAlert) {
             Button("OK", role: .cancel) {}
         } message: {
             Text(cameraUnavailableMessage)
         }
-        .fullScreenCover(isPresented: $isShowingCameraRecorder) {
-            VideoRecorderView(maxDuration: 45) { _ in
-                isShowingCameraRecorder = false
+        .fullScreenCover(isPresented: $isShowingCamera) {
+            VideoRecorderView(maxDuration: 45) { url in
+                selectedVideoURL = url
+                isShowingCamera = false
+                Task { selectedVideoThumbnail = await Self.generateThumbnail(for: url) }
             } onCancel: {
-                isShowingCameraRecorder = false
+                isShowingCamera = false
             }
             .ignoresSafeArea()
         }
         .onChange(of: photosPickerItem) { _, newItem in
             Task {
                 guard let movie = try? await newItem?.loadTransferable(type: Movie.self) else { return }
-                uploadedVideoThumbnail = await Self.generateThumbnail(for: movie.url)
+                selectedVideoURL = movie.url
+                selectedVideoThumbnail = await Self.generateThumbnail(for: movie.url)
             }
-        }
-    }
-
-    @ViewBuilder
-    private var uploadField: some View {
-        if let uploadedVideoThumbnail {
-            Image(uiImage: uploadedVideoThumbnail)
-                .resizable()
-                .scaledToFill()
-                .frame(height: 200)
-                .frame(maxWidth: .infinity)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
-                .overlay(alignment: .bottomTrailing) {
-                    Image(systemName: "play.circle.fill")
-                        .font(.title)
-                        .foregroundStyle(.white)
-                        .padding(8)
-                }
-        } else {
-            VStack(spacing: 8) {
-                Image(systemName: "square.and.arrow.up")
-                    .font(.largeTitle)
-                Text("Tap to upload a video")
-                    .font(.subheadline)
-            }
-            .foregroundStyle(.secondary)
-            .frame(height: 200)
-            .frame(maxWidth: .infinity)
-            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12))
-            .overlay(
-                RoundedRectangle(cornerRadius: 12)
-                    .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [6]))
-                    .foregroundStyle(.secondary)
-            )
-        }
-    }
-
-    private func requestCameraAccessAndShowRecorder() {
-        guard UIImagePickerController.isSourceTypeAvailable(.camera) else {
-            cameraUnavailableMessage = "This device or simulator doesn't have a camera available."
-            isShowingCameraUnavailableAlert = true
-            return
-        }
-
-        switch AVCaptureDevice.authorizationStatus(for: .video) {
-        case .authorized:
-            isShowingCameraRecorder = true
-        case .notDetermined:
-            AVCaptureDevice.requestAccess(for: .video) { granted in
-                DispatchQueue.main.async {
-                    if granted {
-                        isShowingCameraRecorder = true
-                    } else {
-                        cameraUnavailableMessage = "Camera access was denied. Enable it in Settings to record a video."
-                        isShowingCameraUnavailableAlert = true
-                    }
-                }
-            }
-        default:
-            cameraUnavailableMessage = "Camera access is disabled. Enable it in Settings to record a video."
-            isShowingCameraUnavailableAlert = true
         }
     }
 
@@ -126,7 +80,169 @@ struct CameraView: View {
             }
         }
     }
+
+    // MARK: Top navigation
+
+    private var topNavigationArea: some View {
+        HStack {
+            Button {
+                onBack?()
+            } label: {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 18, weight: .semibold))
+                    .frame(width: 36, height: 36)
+                    .background(.thinMaterial, in: Circle())
+            }
+            .accessibilityLabel("Back")
+            Spacer()
+        }
+        .padding(.top, 8)
+    }
+
+    // MARK: Heading
+
+    private var headerSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            (Text("Upload a video ")
+                + Text(Image(systemName: "video.fill")))
+                .font(.system(size: 28, weight: .bold))
+                .lineSpacing(4)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityLabel("Upload a video")
+
+            Text("Record or upload a short video. Don't worry, your data will stay safe and private.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    // MARK: Upload area
+
+    private var uploadArea: some View {
+        PhotosPicker(selection: $photosPickerItem, matching: .videos) {
+            uploadAreaContent
+        }
+        .accessibilityLabel(selectedVideoURL == nil ? "Select file to upload your video" : "Video selected. Tap to choose a different file")
+    }
+
+    @ViewBuilder
+    private var uploadAreaContent: some View {
+        RoundedRectangle(cornerRadius: 20)
+            .fill(.thinMaterial)
+            .overlay(
+                RoundedRectangle(cornerRadius: 20)
+                    .strokeBorder(.secondary.opacity(0.3), lineWidth: 1)
+            )
+            .frame(height: 220)
+            .overlay {
+                if let selectedVideoThumbnail {
+                    Image(uiImage: selectedVideoThumbnail)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(height: 220)
+                        .frame(maxWidth: .infinity)
+                        .clipShape(RoundedRectangle(cornerRadius: 20))
+                        .overlay(alignment: .topTrailing) {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.title2)
+                                .foregroundStyle(.white, .green)
+                                .padding(10)
+                        }
+                        .overlay {
+                            Image(systemName: "play.circle.fill")
+                                .font(.system(size: 36))
+                                .foregroundStyle(.white)
+                        }
+                } else {
+                    VStack(spacing: 10) {
+                        Image(systemName: "square.and.arrow.up")
+                            .font(.system(size: 32, weight: .medium))
+                        Text("Select file")
+                            .font(.subheadline.weight(.medium))
+                    }
+                    .foregroundStyle(.secondary)
+                }
+            }
+    }
+
+    // MARK: Camera action
+
+    private var cameraAction: some View {
+        VStack(spacing: 20) {
+            Text("or")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+
+            Button {
+                requestCameraAccessAndShowCapture()
+            } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: "camera.fill")
+                    Text("Open Camera & Record Video")
+                        .font(.body.weight(.semibold))
+                }
+                .frame(maxWidth: .infinity)
+                .frame(height: 54)
+                .background(.thinMaterial, in: Capsule())
+                .overlay(Capsule().strokeBorder(.secondary.opacity(0.3), lineWidth: 1))
+            }
+            .accessibilityLabel("Open camera and record a video")
+        }
+    }
+
+    // MARK: Continue
+
+    private var continueButton: some View {
+        Button {
+            if let selectedVideoURL {
+                onContinue(selectedVideoURL)
+            }
+        } label: {
+            Text("Continue")
+                .font(.body.weight(.semibold))
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity)
+                .frame(height: 54)
+                .background(selectedVideoURL == nil ? Color.accentColor.opacity(0.4) : Color.accentColor, in: Capsule())
+        }
+        .buttonStyle(.plain)
+        .disabled(selectedVideoURL == nil)
+        .accessibilityLabel("Continue")
+    }
+
+    // MARK: Camera permission
+
+    private func requestCameraAccessAndShowCapture() {
+        guard UIImagePickerController.isSourceTypeAvailable(.camera) else {
+            cameraUnavailableMessage = "This device or simulator doesn't have a camera available."
+            isShowingCameraUnavailableAlert = true
+            return
+        }
+
+        switch AVCaptureDevice.authorizationStatus(for: .video) {
+        case .authorized:
+            isShowingCamera = true
+        case .notDetermined:
+            AVCaptureDevice.requestAccess(for: .video) { granted in
+                DispatchQueue.main.async {
+                    if granted {
+                        isShowingCamera = true
+                    } else {
+                        cameraUnavailableMessage = "Camera access was denied. Enable it in Settings to record a video."
+                        isShowingCameraUnavailableAlert = true
+                    }
+                }
+            }
+        default:
+            cameraUnavailableMessage = "Camera access is disabled. Enable it in Settings to record a video."
+            isShowingCameraUnavailableAlert = true
+        }
+    }
 }
+
+// MARK: - Video transfer
 
 private struct Movie: Transferable {
     let url: URL
@@ -144,6 +260,8 @@ private struct Movie: Transferable {
         }
     }
 }
+
+// MARK: - Video recorder picker
 
 private struct VideoRecorderView: UIViewControllerRepresentable {
     let maxDuration: TimeInterval
@@ -193,4 +311,8 @@ private struct VideoRecorderView: UIViewControllerRepresentable {
             }
         }
     }
+}
+
+#Preview {
+    CameraView()
 }
