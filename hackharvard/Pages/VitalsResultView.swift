@@ -16,8 +16,6 @@ struct VitalsResultView: View {
             ScrollView {
                 VStack(spacing: 20) {
                     vital("Heart Rate", value: result.hr_bpm, unit: "bpm", quality: result.quality.hr)
-                    vital("Respiration Rate", value: result.rr_brpm, unit: "br/min", quality: result.quality.rr)
-                    vital("SpO2", value: result.spo2_pct, unit: "%", quality: result.quality.spo2)
                     vital("HRV (SDNN)", value: result.prv_sdnn_ms, unit: "ms", quality: result.quality.prv)
 
                     Text(result.meta.disclaimer)
@@ -67,12 +65,12 @@ struct VitalsResultView: View {
 #Preview {
     VitalsResultView(result: VitalsResponse(
         hr_bpm: 72.3,
-        prv_sdnn_ms: nil,
+        prv_sdnn_ms: 38.0,
         prv_rmssd_ms: nil,
         rr_brpm: nil,
         spo2_pct: nil,
-        quality: VitalsQuality(hr: "ok", prv: "unavailable", rr: "unavailable", spo2: "unavailable"),
-        meta: VitalsMeta(duration_s: 12, fs: 30, disclaimer: "This is a product estimate, not a clinical diagnosis or a replacement for a medical device."),
+        quality: VitalsQuality(hr: "ok", prv: "ok", rr: "unavailable", spo2: "unavailable"),
+        meta: VitalsMeta(duration_s: 40, fs: 30, disclaimer: "This is a product estimate, not a clinical diagnosis or a replacement for a medical device."),
         error: nil
     ))
 }
