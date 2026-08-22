@@ -1,3 +1,10 @@
 fastapi
 uvicorn
 python-multipart
+numpy
+scipy
+opencv-python-headless
+mediapipe
+av
+pytest
+httpx
