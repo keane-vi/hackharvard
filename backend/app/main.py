@@ -59,5 +59,13 @@ async def process_video(video: UploadFile = File(...)):
             status_code=400,
             content={"error": exc.code, "message": exc.message},
         )
+    except Exception as exc:
+        return JSONResponse(
+            status_code=500,
+            content={
+                "error": "processing_failed",
+                "message": "Something went wrong while processing the video.",
+            },
+        )
     finally:
         Path(tmp_path).unlink(missing_ok=True)
