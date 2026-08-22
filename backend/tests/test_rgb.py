@@ -52,6 +52,9 @@ def test_extract_rgb_trace_returns_arrays_for_pos(tmp_path):
     assert t.shape == (result["n_samples"],)
     assert float(t[0]) == 0.0
     assert result["fs"] == pytest.approx((len(t) - 1) / float(t[-1]))
+    assert len(result["rgb_regions"]) == 3
+    for region in result["rgb_regions"]:
+        assert region.shape == rgb.shape
 
 
 def test_downscale_caps_long_side():

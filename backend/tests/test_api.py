@@ -67,12 +67,31 @@ def test_process_marks_hr_unavailable_when_quality_fails():
         patch("app.pipeline.estimate.pulse_snr", return_value=0.1),
         patch("app.pipeline.estimate.motion_score", return_value=0.8),
         patch("app.pipeline.estimate.hr_quality_ok", return_value=False),
+        patch("app.pipeline.estimate.heart_rate_bpm", return_value=81.5),
     ):
         response = _post_video()
     body = response.json()
     assert response.status_code == 200
-    assert body["hr_bpm"] is None
+    assert body["hr_bpm"] == 81.5
     assert body["quality"]["hr"] == "unavailable"
+    assert body["error"] is None
+
+
+def test_process_quality_ok_when_windowed_hr_agrees():
+    with (
+        patch("app.pipeline.estimate.extract_rgb_trace", return_value=PROCESS_TRACE),
+        patch("app.pipeline.estimate.pos", return_value=np.ones(120)),
+        patch("app.pipeline.estimate.pulse_snr", return_value=0.1),
+        patch("app.pipeline.estimate.motion_score", return_value=0.8),
+        patch("app.pipeline.estimate.hr_quality_ok", return_value=False),
+        patch("app.pipeline.estimate.robust_heart_rate", return_value=73.8),
+        patch("app.pipeline.estimate.heart_rate_bpm", return_value=81.5),
+    ):
+        response = _post_video()
+    body = response.json()
+    assert response.status_code == 200
+    assert body["hr_bpm"] == 73.8
+    assert body["quality"]["hr"] == "ok"
     assert body["error"] is None
 
 

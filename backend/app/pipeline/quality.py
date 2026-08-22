@@ -2,7 +2,7 @@ import numpy as np
 
 from app.pipeline.hr import HR_BAND_HZ, bandpass_cardiac
 
-SNR_MIN = 1.0
+SNR_MIN = 0.5
 MOTION_MAX = 0.25
 _PEAK_BINS = 3
 _EPS = 1e-12

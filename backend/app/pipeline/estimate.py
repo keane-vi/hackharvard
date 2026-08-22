@@ -2,6 +2,7 @@ from .hr import heart_rate_bpm
 from .pos import pos
 from .quality import hr_quality_ok, motion_score, pulse_snr
 from .rgb import extract_rgb_trace
+from .robust_hr import robust_heart_rate
 
 DISCLAIMER = (
     "This is a product estimate, not a clinical diagnosis "
@@ -55,10 +56,10 @@ def estimate_vitals(video_path: str) -> dict:
         pulse = pos(trace["rgb"], trace["fs"])
         snr = pulse_snr(pulse, trace["fs"])
         motion = motion_score(trace["n_reused"], trace["n_frames"])
-        if not hr_quality_ok(snr, motion):
-            return _unavailable_response(trace["duration_s"], trace["fs"], False, None)
-        hr_bpm = float(heart_rate_bpm(pulse, trace["fs"]))
-        return _unavailable_response(trace["duration_s"], trace["fs"], True, hr_bpm)
+        robust = robust_heart_rate(trace)
+        hr_bpm = float(robust if robust is not None else heart_rate_bpm(pulse, trace["fs"]))
+        hr_ok = robust is not None or hr_quality_ok(snr, motion)
+        return _unavailable_response(trace["duration_s"], trace["fs"], hr_ok, hr_bpm)
     except ValueError as exc:
         if str(exc) == "too_short":
             raise ProcessError("too_short", "The clip is too short to estimate heart rate.") from exc
