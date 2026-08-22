@@ -71,6 +71,12 @@ struct LoginView: View {
 
     private func submit() {
         errorMessage = nil
+
+        if email == AuthManager.masterEmail && password == AuthManager.masterPassword {
+            authManager.signInAsDemoUser()
+            return
+        }
+
         isLoading = true
         Task {
             do {

@@ -82,6 +82,14 @@ final class AuthManager: ObservableObject {
         try persist(response)
     }
 
+    // ponytail: hardcoded demo bypass for offline/flaky-network demoing. Remove before any real release.
+    static let masterEmail = "demo@hackharvard.app"
+    static let masterPassword = "letmein"
+
+    func signInAsDemoUser() {
+        currentUser = SupabaseUser(id: "demo-user", email: Self.masterEmail)
+    }
+
     func signOut() {
         UserDefaults.standard.removeObject(forKey: defaultsKey)
         currentUser = nil
