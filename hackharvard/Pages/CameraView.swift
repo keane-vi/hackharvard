@@ -3,8 +3,10 @@ import PhotosUI
 import UIKit
 import AVFoundation
 import UniformTypeIdentifiers
+import SwiftData
 
 struct CameraView: View {
+    @Environment(\.modelContext) private var modelContext
     @State private var selectedVideoURL: URL?
     @State private var selectedVideoThumbnail: UIImage?
     @State private var photosPickerItem: PhotosPickerItem?
@@ -101,6 +103,7 @@ struct CameraView: View {
                     isShowingProcessingErrorAlert = true
                     return
                 }
+                modelContext.insert(ScanRecord(from: response))
                 vitalsResult = response
             } catch let apiError as VitalsAPIError {
                 processingErrorMessage = apiError.message
