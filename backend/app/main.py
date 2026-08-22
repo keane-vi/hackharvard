@@ -1,4 +1,9 @@
-from fastapi import FastAPI, File, UploadFile
+import tempfile
+from pathlib import Path
+
+from fastapi import FastAPI, File, HTTPException, UploadFile
+
+from app.pipeline import extract_rgb_trace
 
 DISCLAIMER = (
     "This is a product estimate, not a clinical diagnosis "
@@ -11,6 +16,21 @@ app = FastAPI()
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+@app.post("/debug/rgb")
+async def debug_rgb(video: UploadFile = File(...)):
+    suffix = Path(video.filename or "clip.mp4").suffix or ".mp4"
+    contents = await video.read()
+    tmp = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
+    try:
+        tmp.write(contents)
+        tmp.close()
+        return extract_rgb_trace(tmp.name)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    finally:
+        Path(tmp.name).unlink(missing_ok=True)
 
 
 @app.post("/v1/process")

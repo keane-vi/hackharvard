@@ -2,5 +2,7 @@ xcuserdata/
 *.xcuserstate
 
 backend/.venv/
+backend/.pytest_cache/
+backend/app/pipeline/face_landmarker.task
 __pycache__/
 *.pyc
