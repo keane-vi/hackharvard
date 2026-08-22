@@ -43,10 +43,10 @@ struct VitalsResultView: View {
             .padding(.bottom, 20)
         }
         .scrollBounceBehavior(.basedOnSize)
-        .background(Color.white)
+        .background(Color(.systemBackground))
         .presentationDetents([.medium, .large], selection: .constant(.large))
         .presentationDragIndicator(.visible)
-        .presentationBackground(Color.white)
+        .presentationBackground(Color(.systemBackground))
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button { dismiss() } label: {
@@ -113,7 +113,7 @@ struct VitalsResultView: View {
 
                     VStack(spacing: 4) {
                         Circle()
-                            .fill(Color.white)
+                            .fill(Color(.systemBackground))
                             .frame(width: 20, height: 20)
                             .overlay(Circle().stroke(Color(.label), lineWidth: 2))
                             .overlay {
@@ -224,10 +224,12 @@ private enum HeartRateStatus {
     }
 }
 
-#Preview {
-    VitalsResultView(result: VitalsResponse(
-        hr_bpm: 118, prv_sdnn_ms: nil, prv_rmssd_ms: nil, rr_brpm: nil, spo2_pct: nil,
-        quality: VitalsQuality(hr: "ok", prv: "unavailable", rr: "unavailable", spo2: "unavailable"),
-        meta: VitalsMeta(duration_s: 12, fs: 30, disclaimer: "This is not a medical diagnosis."), error: nil
-    ))
+struct VitalsResultView_Previews: PreviewProvider {
+    static var previews: some View {
+        VitalsResultView(result: VitalsResponse(
+            hr_bpm: 118, prv_sdnn_ms: nil, prv_rmssd_ms: nil, rr_brpm: nil, spo2_pct: nil,
+            quality: VitalsQuality(hr: "ok", prv: "unavailable", rr: "unavailable", spo2: "unavailable"),
+            meta: VitalsMeta(duration_s: 12, fs: 30, disclaimer: "This is not a medical diagnosis."), error: nil
+        ))
+    }
 }

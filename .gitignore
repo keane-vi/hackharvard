@@ -4,5 +4,6 @@ xcuserdata/
 backend/.venv/
 backend/.pytest_cache/
 backend/app/pipeline/face_landmarker.task
+hackharvard/Secrets.plist
 __pycache__/
 *.pyc

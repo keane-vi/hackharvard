@@ -5,9 +5,6 @@ import AVFoundation
 import UniformTypeIdentifiers
 
 struct CameraView: View {
-    var onBack: (() -> Void)? = nil
-    var onContinue: (URL) -> Void = { _ in }
-
     @State private var selectedVideoURL: URL?
     @State private var selectedVideoThumbnail: UIImage?
     @State private var photosPickerItem: PhotosPickerItem?
@@ -24,7 +21,6 @@ struct CameraView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 0) {
-                topNavigationArea
                 headerSection
                     .padding(.top, 28)
                 uploadArea
@@ -129,24 +125,6 @@ struct CameraView: View {
         }
     }
 
-    // MARK: Top navigation
-
-    private var topNavigationArea: some View {
-        HStack {
-            Button {
-                onBack?()
-            } label: {
-                Image(systemName: "chevron.left")
-                    .font(.system(size: 18, weight: .semibold))
-                    .frame(width: 36, height: 36)
-                    .background(.thinMaterial, in: Circle())
-            }
-            .accessibilityLabel("Back")
-            Spacer()
-        }
-        .padding(.top, 8)
-    }
-
     // MARK: Heading
 
     private var headerSection: some View {
@@ -244,7 +222,6 @@ struct CameraView: View {
     private var continueButton: some View {
         Button {
             if let selectedVideoURL {
-                onContinue(selectedVideoURL)
                 startProcessing(selectedVideoURL)
             }
         } label: {
@@ -365,6 +342,8 @@ private struct VideoRecorderView: UIViewControllerRepresentable {
     }
 }
 
-#Preview {
-    CameraView()
+struct CameraView_Previews: PreviewProvider {
+    static var previews: some View {
+        CameraView()
+    }
 }
