@@ -86,6 +86,25 @@ def test_prv_unavailable_when_clip_too_short():
     assert result["rmssd_ms"] is None
 
 
+def test_prv_returns_sdnn_on_12s_phone_clip():
+    """Typical judge/demo recordings are ~10–15 s, not 30–60 s."""
+    peak_times = _peak_times(duration_s=12.0)
+    _, pulse = _camera_pulse(peak_times, duration_s=12.0)
+    result = estimate_prv(pulse, CAMERA_FS)
+    assert result["ok"] is True
+    assert result["sdnn_ms"] is not None
+    assert result["sdnn_ms"] > 0
+
+
+def test_prv_returns_sdnn_on_pos_like_sine():
+    t = np.arange(int(12.0 * CAMERA_FS), dtype=np.float64) / CAMERA_FS
+    pulse = np.sin(2 * np.pi * (TRUE_BPM / 60.0) * t)
+    pulse += 0.15 * np.random.default_rng(0).normal(size=pulse.size)
+    result = estimate_prv(pulse, CAMERA_FS)
+    assert result["ok"] is True
+    assert result["sdnn_ms"] is not None
+
+
 def test_rmssd_omitted_when_interval_gate_fails(monkeypatch):
     peak_times = _peak_times()
     _, pulse = _camera_pulse(peak_times)

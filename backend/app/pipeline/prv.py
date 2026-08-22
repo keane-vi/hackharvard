@@ -6,12 +6,12 @@ from .hr import bandpass_cardiac
 from .quality import interval_consistency_ok
 
 TARGET_FS = 250.0
-MIN_DURATION_S = 20.0
-MIN_IBIS = 15
+MIN_DURATION_S = 10.0
+MIN_IBIS = 8
 REFRACTORY_S = 0.3
 IBI_MIN_MS = 300.0
 IBI_MAX_MS = 1500.0
-MEDIAN_DEV = 0.20
+MEDIAN_DEV = 0.35
 
 
 def upsample_pulse(pulse: np.ndarray, fs: float, target_fs: float = TARGET_FS):
@@ -58,7 +58,7 @@ def estimate_prv(pulse: np.ndarray, fs: float) -> dict:
     t_up, pulse_up = upsample_pulse(filtered, fs, TARGET_FS)
     fs_up = (len(pulse_up) - 1) / float(t_up[-1] - t_up[0]) if t_up[-1] > t_up[0] else TARGET_FS
     distance = max(1, int(round(REFRACTORY_S * fs_up)))
-    prominence = 0.25 * float(np.std(pulse_up))
+    prominence = 0.1 * float(np.std(pulse_up))
     peaks, _ = find_peaks(pulse_up, distance=distance, prominence=max(prominence, 1e-9))
     peak_times = t_up[peaks]
     if peak_times.size < MIN_IBIS + 1:
