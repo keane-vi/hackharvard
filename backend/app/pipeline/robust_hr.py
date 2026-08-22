@@ -3,10 +3,17 @@ import numpy as np
 from .chrom import chrom
 from .hr import heart_rate_bpm
 from .pos import pos
+from .quality import pulse_snr
 
 WINDOW_S = 10.0
 HOP_S = 2.0
 AGREE_BPM = 10.0
+# POS/CHROM agreeing on a value is not enough on its own: a strong shared
+# artifact (motion, a lighting change) can make both methods confidently
+# agree on the same wrong frequency, since they run on the same raw input.
+# Require each method's own pulse to also look like a real, dominant-peak
+# signal (not just mutually consistent noise) before trusting the window.
+WINDOW_SNR_MIN = 1.0
 
 
 def robust_heart_rate(trace: dict) -> float | None:
@@ -31,11 +38,18 @@ def robust_heart_rate(trace: dict) -> float | None:
         for region in series:
             chunk = region[start:chunk_end]
             try:
-                pos_bpm = heart_rate_bpm(pos(chunk, fs), fs)
-                chrom_bpm = heart_rate_bpm(chrom(chunk, fs), fs)
+                pos_pulse = pos(chunk, fs)
+                chrom_pulse = chrom(chunk, fs)
+                pos_bpm = heart_rate_bpm(pos_pulse, fs)
+                chrom_bpm = heart_rate_bpm(chrom_pulse, fs)
+                pos_snr = pulse_snr(pos_pulse, fs)
+                chrom_snr = pulse_snr(chrom_pulse, fs)
             except ValueError:
                 continue
-            if abs(pos_bpm - chrom_bpm) <= AGREE_BPM:
+            if (
+                abs(pos_bpm - chrom_bpm) <= AGREE_BPM
+                and min(pos_snr, chrom_snr) >= WINDOW_SNR_MIN
+            ):
                 agreed.append(0.5 * (pos_bpm + chrom_bpm))
         if agreed:
             stable.append(float(np.median(agreed)))

@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 import numpy as np
 import pytest
 
@@ -32,6 +34,29 @@ def test_robust_hr_median_recovers_known_rate():
     bpm = robust_heart_rate(trace)
     assert bpm is not None
     assert bpm == pytest.approx(72.0, abs=3.0)
+
+
+def test_robust_hr_rejects_agreement_when_snr_too_low():
+    # POS and CHROM agreeing is not enough on its own: a shared artifact (the
+    # same lighting/motion event corrupting both projections) can make them
+    # confidently agree on the wrong frequency. If every window's pulse SNR
+    # is too low, robust_heart_rate must not trust that agreement.
+    trace = _pulse_trace(duration_s=20.0, bpm=72.0)
+    with (
+        patch("app.pipeline.robust_hr.heart_rate_bpm", return_value=72.0),
+        patch("app.pipeline.robust_hr.pulse_snr", return_value=0.1),
+    ):
+        assert robust_heart_rate(trace) is None
+
+
+def test_robust_hr_accepts_agreement_when_snr_sufficient():
+    trace = _pulse_trace(duration_s=20.0, bpm=72.0)
+    with (
+        patch("app.pipeline.robust_hr.heart_rate_bpm", return_value=72.0),
+        patch("app.pipeline.robust_hr.pulse_snr", return_value=5.0),
+    ):
+        bpm = robust_heart_rate(trace)
+    assert bpm == pytest.approx(72.0)
 
 
 def test_robust_hr_median_prefers_stable_rate_over_late_outlier():
