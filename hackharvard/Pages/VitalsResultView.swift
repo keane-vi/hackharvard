@@ -5,56 +5,6 @@ struct HeartRateThresholds {
     var lowUpperBound: Double = 60
     var typicalUpperBound: Double = 100
     var displayedMaximum: Double = 160
-
-    var typicalRange: ClosedRange<Double> { lowUpperBound...typicalUpperBound }
-}
-
-struct VitalsResultView: View {
-    let result: VitalsResponse
-    var thresholds = HeartRateThresholds()
-    var onScanAgain: (() -> Void)?
-
-    @Environment(\.dismiss) private var dismiss
-    private var bpm: Double { result.hr_bpm ?? 0 }
-    private var hrvMs: Double? { result.prv_sdnn_ms }
-
-    private var status: HeartRateStatus {
-        if bpm < thresholds.typicalRange.lowerBound { return .below }
-        if bpm > thresholds.typicalRange.upperBound { return .above }
-        return .within
-    }
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                header.padding(.bottom, 28)
-                measurement.padding(.bottom, 16)
-                hrvMeasurement.padding(.bottom, 28)
-                spectrum.padding(.bottom, 24)
-                statusPanel.padding(.bottom, 28)
-                actions.padding(.bottom, 18)
-
-                Text(result.meta.disclaimer)
-                    .font(.footnote)
-                    .foregroundStyle(VantaTheme.textMuted)
-                    .frame(maxWidth: .infinity)
-                    .multilineTextAlignment(.center)
-            }
-            .padding(.horizontal, 24)
-            .padding(.top, 14)
-            .padding(.bottom, 20)
-        }
-        .scrollBounceBehavior(.basedOnSize)
-        .background(VantaTheme.background)
-        .presentationDetents([.large])
-        .presentationDragIndicator(.hidden)
-        .presentationBackground(VantaTheme.background)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button { dismiss() } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 12, weight: .bold))
-                        .frame(width: 30, height: 30)
                         .foregroundStyle(VantaTheme.textPrimary)
                         .background(VantaTheme.surface, in: Circle())
                         .overlay(Circle().stroke(VantaTheme.border, lineWidth: 1))
