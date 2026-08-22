@@ -15,6 +15,7 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
+				Secrets.plist,
 			);
 			target = 328590DC3038BA8D00ED67B9 /* hackharvard */;
 		};
