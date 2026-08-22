@@ -90,6 +90,9 @@ struct CameraView: View {
             } catch let apiError as VitalsAPIError {
                 processingErrorMessage = apiError.message
                 isShowingProcessingErrorAlert = true
+            } catch let urlError as URLError where urlError.code == .timedOut {
+                processingErrorMessage = "The server took too long. Try a shorter, still clip after opening the health page."
+                isShowingProcessingErrorAlert = true
             } catch {
                 processingErrorMessage = "Could not reach the server. Check your connection and try again."
                 isShowingProcessingErrorAlert = true
@@ -311,7 +314,7 @@ private struct VideoRecorderView: UIViewControllerRepresentable {
         picker.cameraCaptureMode = .video
         picker.cameraDevice = .rear
         picker.videoMaximumDuration = maxDuration
-        picker.videoQuality = .typeHigh
+        picker.videoQuality = .typeMedium
         picker.delegate = context.coordinator
         return picker
     }

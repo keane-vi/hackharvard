@@ -50,6 +50,11 @@
 		<true/>
 		<key>NSExceptionDomains</key>
 		<dict>
+			<key>172.20.10.6</key>
+			<dict>
+				<key>NSExceptionAllowsInsecureHTTPLoads</key>
+				<true/>
+			</dict>
 			<key>172.20.10.2</key>
 			<dict>
 				<key>NSExceptionAllowsInsecureHTTPLoads</key>

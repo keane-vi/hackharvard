@@ -42,11 +42,25 @@ struct VitalsAPIError: Decodable, Error {
 }
 
 enum VitalsAPI {
-    static var baseURL = URL(string: "https://hackharvard-vi2o.onrender.com")!
+    // Local Windows backend. Phone and this PC must be on the same Wi-Fi.
+    // Render is not used. Update the IP if `ipconfig` changes.
+    static var baseURL = URL(string: "http://172.20.10.6:8000")!
+
+    private static let session: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 180
+        config.timeoutIntervalForResource = 180
+        config.waitsForConnectivity = true
+        return URLSession(configuration: config)
+    }()
 
     static func process(videoAt fileURL: URL) async throws -> VitalsResponse {
+        let healthURL = baseURL.appendingPathComponent("health")
+        _ = try? await session.data(from: healthURL)
+
         var request = URLRequest(url: baseURL.appendingPathComponent("v1/process"))
         request.httpMethod = "POST"
+        request.timeoutInterval = 180
 
         let boundary = UUID().uuidString
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
@@ -60,7 +74,7 @@ enum VitalsAPI {
         body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
         request.httpBody = body
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await session.data(for: request)
 
         guard let httpResponse = response as? HTTPURLResponse else {
             throw URLError(.badServerResponse)

@@ -15,6 +15,18 @@ RIGHT_CHEEK = (280, 330, 347, 425)
 SKIN_LOWER = np.array([0, 133, 77], dtype=np.uint8)
 SKIN_UPPER = np.array([255, 173, 127], dtype=np.uint8)
 BOX_HALF = 18
+MAX_SIDE = 480
+
+
+def _downscale(bgr: np.ndarray) -> np.ndarray:
+    h, w = bgr.shape[:2]
+    long_side = max(h, w)
+    if long_side <= MAX_SIDE:
+        return bgr
+    scale = MAX_SIDE / long_side
+    new_w = max(1, int(round(w * scale)))
+    new_h = max(1, int(round(h * scale)))
+    return cv2.resize(bgr, (new_w, new_h), interpolation=cv2.INTER_AREA)
 
 MODEL_PATH = Path(__file__).resolve().parent / "face_landmarker.task"
 MODEL_URL = (
@@ -137,7 +149,7 @@ def extract_rgb_trace(video_path: str) -> dict:
         for frame in container.decode(video=0):
             n_frames += 1
             t = float(frame.time) if frame.time is not None else n_frames / 30.0
-            bgr = frame.to_ndarray(format="bgr24")
+            bgr = _downscale(frame.to_ndarray(format="bgr24"))
             h, w = bgr.shape[:2]
             rgb_img = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
             lms = tracker.landmarks(rgb_img, t)

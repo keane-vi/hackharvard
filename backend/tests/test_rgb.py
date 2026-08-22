@@ -5,7 +5,7 @@ import cv2
 import numpy as np
 import pytest
 
-from app.pipeline.rgb import extract_rgb_trace
+from app.pipeline.rgb import _downscale, extract_rgb_trace
 
 FIXTURE = Path(__file__).parent / "fixtures" / "face.jpg"
 
@@ -52,3 +52,10 @@ def test_extract_rgb_trace_returns_arrays_for_pos(tmp_path):
     assert t.shape == (result["n_samples"],)
     assert float(t[0]) == 0.0
     assert result["fs"] == pytest.approx((len(t) - 1) / float(t[-1]))
+
+
+def test_downscale_caps_long_side():
+    big = np.zeros((1920, 1080, 3), dtype=np.uint8)
+    out = _downscale(big)
+    assert max(out.shape[0], out.shape[1]) == 480
+    assert out.shape[2] == 3
