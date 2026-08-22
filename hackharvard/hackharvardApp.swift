@@ -6,14 +6,13 @@ struct hackharvardApp: App {
 
     var body: some Scene {
         WindowGroup {
-            Group {
-                if authManager.isSignedIn {
-                    ContentView()
-                } else {
+            ContentView()
+                .environmentObject(authManager)
+                .sheet(isPresented: .constant(!authManager.isSignedIn)) {
                     LoginView()
+                        .environmentObject(authManager)
+                        .interactiveDismissDisabled()
                 }
-            }
-            .environmentObject(authManager)
         }
     }
 }
