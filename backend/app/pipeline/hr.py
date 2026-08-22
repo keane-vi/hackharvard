@@ -1,8 +1,13 @@
 import numpy as np
-from scipy.signal import butter, sosfiltfilt
+from scipy.signal import butter, find_peaks, sosfiltfilt
 
 HR_BAND_HZ = (0.7, 4.0)
 MAX_BIN_BPM = 0.5
+HARMONIC_RATIO = 0.35
+PEAK_AGREE_BPM = 12.0
+REFRACTORY_S = 0.3
+MIN_PEAK_IBIS = 7
+_EPS = 1e-12
 
 
 def fft_length(n: int, fs: float) -> int:
@@ -27,6 +32,20 @@ def _power_near(freqs: np.ndarray, mag: np.ndarray, target_hz: float, half_width
     return float(np.max(mag[nearby]))
 
 
+def _peak_interval_bpm(filtered: np.ndarray, fs: float) -> float | None:
+    """Median beat rate from peaks. Tie-breaker only; not used as the HR estimate."""
+    distance = max(1, int(round(REFRACTORY_S * fs)))
+    prominence = 0.1 * float(np.std(filtered))
+    peaks, _ = find_peaks(filtered, distance=distance, prominence=max(prominence, _EPS))
+    if peaks.size < MIN_PEAK_IBIS + 1:
+        return None
+    ibis_s = np.diff(peaks.astype(np.float64)) / float(fs)
+    ibis_s = ibis_s[(ibis_s >= 0.3) & (ibis_s <= 1.5)]
+    if ibis_s.size < MIN_PEAK_IBIS:
+        return None
+    return 60.0 / float(np.median(ibis_s))
+
+
 def heart_rate_bpm(pulse: np.ndarray, fs: float) -> float:
     filtered = bandpass_cardiac(pulse, fs)
     windowed = filtered * np.hanning(len(filtered))
@@ -40,10 +59,18 @@ def heart_rate_bpm(pulse: np.ndarray, fs: float) -> float:
     band_freqs = freqs[band]
     band_mag = mag[band]
     peak_i = int(np.argmax(band_mag))
-    peak_hz = float(band_freqs[peak_i])
+    raw_hz = float(band_freqs[peak_i])
     peak_mag = float(band_mag[peak_i])
-    # rPPG often puts more energy in the 2nd harmonic; prefer f/2 when it is present.
-    half_hz = peak_hz / 2.0
-    if half_hz >= HR_BAND_HZ[0] and _power_near(band_freqs, band_mag, half_hz) >= 0.35 * peak_mag:
-        peak_hz = half_hz
-    return peak_hz * 60.0
+    half_hz = raw_hz / 2.0
+    would_fold = (
+        half_hz >= HR_BAND_HZ[0]
+        and _power_near(band_freqs, band_mag, half_hz) >= HARMONIC_RATIO * peak_mag
+    )
+    if would_fold:
+        peak_hr = _peak_interval_bpm(filtered, fs)
+        raw_bpm = raw_hz * 60.0
+        # Exercise: beats match the high FFT peak, leftover f/2 is not the pulse.
+        if peak_hr is not None and abs(peak_hr - raw_bpm) <= PEAK_AGREE_BPM:
+            return raw_bpm
+        raw_hz = half_hz
+    return raw_hz * 60.0
