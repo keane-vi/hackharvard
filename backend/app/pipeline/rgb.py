@@ -7,7 +7,7 @@ import mediapipe as mp
 import numpy as np
 from scipy.signal import detrend
 
-# MediaPipe Face Landmarker still uses the 468-point face mesh topology.
+# 468-point Face Mesh topology (same IDs on solutions FaceMesh and Tasks Face Landmarker).
 FOREHEAD = (10, 67, 69, 108, 151, 337, 299)
 LEFT_CHEEK = (50, 101, 118, 205)
 RIGHT_CHEEK = (280, 330, 347, 425)
@@ -27,6 +27,66 @@ def _ensure_model() -> str:
     if not MODEL_PATH.exists() or MODEL_PATH.stat().st_size < 1000:
         urllib.request.urlretrieve(MODEL_URL, MODEL_PATH)
     return str(MODEL_PATH)
+
+
+def _has_legacy_face_mesh() -> bool:
+    solutions = getattr(mp, "solutions", None)
+    return solutions is not None and hasattr(solutions, "face_mesh")
+
+
+class _FaceTracker:
+    """0.10.21 uses Face Mesh; 0.10.30+/1.0 on Py3.14 only expose Face Landmarker."""
+
+    def __init__(self):
+        self._mesh = None
+        self._landmarker = None
+        self._last_ts = -1
+        if _has_legacy_face_mesh():
+            face_mesh = getattr(mp, "solutions").face_mesh
+            self._mesh = face_mesh.FaceMesh(
+                static_image_mode=False,
+                max_num_faces=1,
+                refine_landmarks=False,
+                min_detection_confidence=0.5,
+                min_tracking_confidence=0.5,
+            )
+            return
+        options = mp.tasks.vision.FaceLandmarkerOptions(
+            base_options=mp.tasks.BaseOptions(model_asset_path=_ensure_model()),
+            running_mode=mp.tasks.vision.RunningMode.VIDEO,
+            num_faces=1,
+            min_face_detection_confidence=0.5,
+            min_tracking_confidence=0.5,
+        )
+        self._landmarker = mp.tasks.vision.FaceLandmarker.create_from_options(options)
+
+    def landmarks(self, rgb_img, t: float):
+        if self._mesh is not None:
+            result = self._mesh.process(rgb_img)
+            if not result.multi_face_landmarks:
+                return None
+            return result.multi_face_landmarks[0].landmark
+
+        timestamp_ms = int(round(t * 1000))
+        if timestamp_ms <= self._last_ts:
+            timestamp_ms = self._last_ts + 1
+        self._last_ts = timestamp_ms
+        mp_image = mp.Image(
+            image_format=mp.ImageFormat.SRGB,
+            data=np.ascontiguousarray(rgb_img),
+        )
+        if self._landmarker is None:
+            return None
+        result = self._landmarker.detect_for_video(mp_image, timestamp_ms)
+        if not result.face_landmarks:
+            return None
+        return result.face_landmarks[0]
+
+    def close(self):
+        if self._mesh is not None:
+            self._mesh.close()
+        if self._landmarker is not None:
+            self._landmarker.close()
 
 
 def _box_from_ids(landmarks, ids, w, h):
@@ -70,36 +130,21 @@ def extract_rgb_trace(video_path: str) -> dict:
     n_frames = 0
     n_face = 0
     n_reused = 0
-    last_ts = -1
 
-    options = mp.tasks.vision.FaceLandmarkerOptions(
-        base_options=mp.tasks.BaseOptions(model_asset_path=_ensure_model()),
-        running_mode=mp.tasks.vision.RunningMode.VIDEO,
-        num_faces=1,
-        min_face_detection_confidence=0.5,
-        min_tracking_confidence=0.5,
-    )
-    landmarker = mp.tasks.vision.FaceLandmarker.create_from_options(options)
+    tracker = _FaceTracker()
     container = av.open(str(path))
     try:
         for frame in container.decode(video=0):
             n_frames += 1
             t = float(frame.time) if frame.time is not None else n_frames / 30.0
-            timestamp_ms = int(round(t * 1000))
-            if timestamp_ms <= last_ts:
-                timestamp_ms = last_ts + 1
-            last_ts = timestamp_ms
-
             bgr = frame.to_ndarray(format="bgr24")
             h, w = bgr.shape[:2]
-            rgb_img = np.ascontiguousarray(cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB))
-            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_img)
-            result = landmarker.detect_for_video(mp_image, timestamp_ms)
+            rgb_img = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
+            lms = tracker.landmarks(rgb_img, t)
 
             sample = None
-            if result.face_landmarks:
+            if lms is not None:
                 n_face += 1
-                lms = result.face_landmarks[0]
                 forehead = _box_from_ids(lms, FOREHEAD, w, h)
                 if forehead is not None:
                     sample = _mean_rgb_in_box(bgr, forehead)
@@ -122,7 +167,7 @@ def extract_rgb_trace(video_path: str) -> dict:
             times.append(t)
             rgbs.append(sample)
     finally:
-        landmarker.close()
+        tracker.close()
         container.close()
 
     if len(rgbs) < 30:
