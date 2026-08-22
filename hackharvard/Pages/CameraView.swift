@@ -135,7 +135,7 @@ struct CameraView: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityLabel("Upload a video")
 
-            Text("Record or upload a short video. Don't worry, your data will stay safe and private.")
+            Text("Record 15–45 seconds of a still face. Your data stays on this scan.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
