@@ -16,6 +16,7 @@ struct VitalsResultView: View {
 
     @Environment(\.dismiss) private var dismiss
     private var bpm: Double { result.hr_bpm ?? 0 }
+    private var hrvMs: Double? { result.prv_sdnn_ms }
 
     private var status: HeartRateStatus {
         if bpm < thresholds.typicalRange.lowerBound { return .below }
@@ -27,12 +28,13 @@ struct VitalsResultView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 header.padding(.bottom, 28)
-                measurement.padding(.bottom, 28)
+                measurement.padding(.bottom, 16)
+                hrvMeasurement.padding(.bottom, 28)
                 spectrum.padding(.bottom, 24)
                 statusPanel.padding(.bottom, 28)
                 actions.padding(.bottom, 18)
 
-                Text("This is not a medical diagnosis.")
+                Text(result.meta.disclaimer)
                     .font(.footnote)
                     .foregroundStyle(Color(.secondaryLabel))
                     .frame(maxWidth: .infinity)
@@ -73,7 +75,7 @@ struct VitalsResultView: View {
             Text("Scan complete")
                 .font(.system(.title, design: .rounded).weight(.bold))
                 .foregroundStyle(Color(.label))
-            Text("Here’s your heart rate.")
+            Text(hrvMs == nil ? "Here’s your heart rate." : "Here’s your heart rate and HRV.")
                 .font(.title3)
                 .foregroundStyle(Color(.secondaryLabel))
         }
@@ -95,6 +97,33 @@ struct VitalsResultView: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Heart rate, \(bpm.formatted(.number.precision(.fractionLength(0)))) beats per minute")
+    }
+
+    private var hrvMeasurement: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                if let hrvMs {
+                    Text(hrvMs.formatted(.number.precision(.fractionLength(0...1))))
+                        .font(.system(.title, design: .rounded).weight(.bold))
+                        .foregroundStyle(Color(.label))
+                    Text("ms")
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(Color(.secondaryLabel))
+                } else {
+                    Text("Unavailable")
+                        .font(.system(.title, design: .rounded).weight(.bold))
+                        .foregroundStyle(Color(.secondaryLabel))
+                }
+            }
+            Text("HRV (SDNN)")
+                .font(.subheadline)
+                .foregroundStyle(Color(.secondaryLabel))
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(
+            hrvMs.map { "HRV SDNN, \($0.formatted(.number.precision(.fractionLength(0...1)))) milliseconds" }
+                ?? "HRV SDNN unavailable"
+        )
     }
 
     private var spectrum: some View {
@@ -227,9 +256,14 @@ private enum HeartRateStatus {
 struct VitalsResultView_Previews: PreviewProvider {
     static var previews: some View {
         VitalsResultView(result: VitalsResponse(
-            hr_bpm: 118, prv_sdnn_ms: nil, prv_rmssd_ms: nil, rr_brpm: nil, spo2_pct: nil,
-            quality: VitalsQuality(hr: "ok", prv: "unavailable", rr: "unavailable", spo2: "unavailable"),
-            meta: VitalsMeta(duration_s: 12, fs: 30, disclaimer: "This is not a medical diagnosis."), error: nil
+            hr_bpm: 118,
+            prv_sdnn_ms: 38.0,
+            prv_rmssd_ms: nil,
+            rr_brpm: nil,
+            spo2_pct: nil,
+            quality: VitalsQuality(hr: "ok", prv: "ok", rr: "unavailable", spo2: "unavailable"),
+            meta: VitalsMeta(duration_s: 40, fs: 30, disclaimer: "This is not a medical diagnosis."),
+            error: nil
         ))
     }
 }

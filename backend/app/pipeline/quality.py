@@ -4,6 +4,8 @@ from app.pipeline.hr import HR_BAND_HZ, bandpass_cardiac
 
 SNR_MIN = 0.5
 MOTION_MAX = 0.25
+IBI_CV_MAX = 0.12
+MIN_CONSISTENT_IBIS = 15
 _PEAK_BINS = 3
 _EPS = 1e-12
 
@@ -37,3 +39,14 @@ def motion_score(n_reused: int, n_frames: int) -> float:
 
 def hr_quality_ok(snr: float, motion: float) -> bool:
     return snr >= SNR_MIN and motion <= MOTION_MAX
+
+
+def interval_consistency_ok(ibis_ms: np.ndarray) -> bool:
+    ibis = np.asarray(ibis_ms, dtype=np.float64)
+    if ibis.size < MIN_CONSISTENT_IBIS:
+        return False
+    mean = float(np.mean(ibis))
+    if mean <= 0:
+        return False
+    cv = float(np.std(ibis, ddof=1)) / mean
+    return cv <= IBI_CV_MAX
