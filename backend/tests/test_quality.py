@@ -4,6 +4,7 @@ from app.pipeline.quality import (
     MOTION_MAX,
     SNR_MIN,
     hr_quality_ok,
+    interval_consistency_ok,
     motion_score,
     pulse_snr,
 )
@@ -33,3 +34,10 @@ def test_many_reused_frames_fails_motion_gate():
     motion = motion_score(n_reused=80, n_frames=100)
     assert motion > MOTION_MAX
     assert not hr_quality_ok(snr=100.0, motion=motion)
+
+
+def test_interval_consistency_rejects_high_cv():
+    even = np.full(20, 833.0)
+    jumpy = np.array([700.0, 1050.0] * 12)
+    assert interval_consistency_ok(even)
+    assert not interval_consistency_ok(jumpy)
