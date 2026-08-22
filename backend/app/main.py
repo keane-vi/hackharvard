@@ -1,3 +1,4 @@
+import asyncio
 import tempfile
 from pathlib import Path
 
@@ -40,7 +41,7 @@ def health():
 async def debug_rgb(video: UploadFile = File(...)):
     tmp_path = await _save_upload(video)
     try:
-        trace = extract_rgb_trace(tmp_path)
+        trace = await asyncio.to_thread(extract_rgb_trace, tmp_path)
         return {key: trace[key] for key in DEBUG_RGB_KEYS}
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -52,7 +53,7 @@ async def debug_rgb(video: UploadFile = File(...)):
 async def process_video(video: UploadFile = File(...)):
     tmp_path = await _save_upload(video)
     try:
-        return estimate_vitals(tmp_path)
+        return await asyncio.to_thread(estimate_vitals, tmp_path)
     except ProcessError as exc:
         return JSONResponse(
             status_code=400,

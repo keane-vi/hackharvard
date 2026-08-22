@@ -138,7 +138,9 @@ def extract_rgb_trace(video_path: str) -> dict:
     path = Path(video_path)
     times = []
     rgbs = []
+    region_lists = [[], [], []]
     last_rgb = None
+    last_regions = [None, None, None]
     n_frames = 0
     n_face = 0
     n_reused = 0
@@ -155,19 +157,19 @@ def extract_rgb_trace(video_path: str) -> dict:
             lms = tracker.landmarks(rgb_img, t)
 
             sample = None
+            region_now = [None, None, None]
             if lms is not None:
                 n_face += 1
-                forehead = _box_from_ids(lms, FOREHEAD, w, h)
-                if forehead is not None:
-                    sample = _mean_rgb_in_box(bgr, forehead)
-                if sample is None:
-                    for ids in (LEFT_CHEEK, RIGHT_CHEEK):
-                        cheek = _box_from_ids(lms, ids, w, h)
-                        if cheek is None:
-                            continue
-                        sample = _mean_rgb_in_box(bgr, cheek)
-                        if sample is not None:
-                            break
+                for i, ids in enumerate((FOREHEAD, LEFT_CHEEK, RIGHT_CHEEK)):
+                    box = _box_from_ids(lms, ids, w, h)
+                    if box is None:
+                        continue
+                    value = _mean_rgb_in_box(bgr, box)
+                    if value is not None:
+                        region_now[i] = value
+                present = [value for value in region_now if value is not None]
+                if present:
+                    sample = np.mean(present, axis=0)
 
             if sample is None:
                 if last_rgb is None:
@@ -176,8 +178,15 @@ def extract_rgb_trace(video_path: str) -> dict:
                 n_reused += 1
 
             last_rgb = sample
+            for i, value in enumerate(region_now):
+                if value is not None:
+                    last_regions[i] = value
             times.append(t)
             rgbs.append(sample)
+            for i in range(3):
+                region_lists[i].append(
+                    last_regions[i] if last_regions[i] is not None else sample
+                )
     finally:
         tracker.close()
         container.close()
@@ -196,6 +205,13 @@ def extract_rgb_trace(video_path: str) -> dict:
         [np.interp(t_uniform, t, rgb[:, c]) for c in range(3)]
     )
     resampled = detrend(resampled, axis=0)
+    rgb_regions = []
+    for region in region_lists:
+        arr = np.asarray(region, dtype=np.float64)
+        region_rs = np.column_stack(
+            [np.interp(t_uniform, t, arr[:, c]) for c in range(3)]
+        )
+        rgb_regions.append(detrend(region_rs, axis=0))
 
     return {
         "n_frames": n_frames,
@@ -206,6 +222,7 @@ def extract_rgb_trace(video_path: str) -> dict:
         "fs": fs,
         "t": t_uniform,
         "rgb": resampled,
+        "rgb_regions": rgb_regions,
         "rgb_mean": resampled.mean(axis=0).tolist(),
         "rgb_std": resampled.std(axis=0).tolist(),
         "rgb_head": resampled[:5].tolist(),
