@@ -36,7 +36,7 @@ struct VitalsResultView: View {
 
                 Text(result.meta.disclaimer)
                     .font(.footnote)
-                    .foregroundStyle(Color(.secondaryLabel))
+                    .foregroundStyle(VantaTheme.textMuted)
                     .frame(maxWidth: .infinity)
                     .multilineTextAlignment(.center)
             }
@@ -45,39 +45,41 @@ struct VitalsResultView: View {
             .padding(.bottom, 20)
         }
         .scrollBounceBehavior(.basedOnSize)
-        .background(Color(.systemBackground))
-        .presentationDetents([.medium, .large], selection: .constant(.large))
-        .presentationDragIndicator(.visible)
-        .presentationBackground(Color(.systemBackground))
+        .background(VantaTheme.background)
+        .presentationDetents([.large])
+        .presentationDragIndicator(.hidden)
+        .presentationBackground(VantaTheme.background)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button { dismiss() } label: {
                     Image(systemName: "xmark")
                         .font(.system(size: 12, weight: .bold))
                         .frame(width: 30, height: 30)
-                        .foregroundStyle(Color(.label))
-                        .background(Color(.systemGray6), in: Circle())
+                        .foregroundStyle(VantaTheme.textPrimary)
+                        .background(VantaTheme.surface, in: Circle())
+                        .overlay(Circle().stroke(VantaTheme.border, lineWidth: 1))
                 }
                 .accessibilityLabel("Close scan result")
             }
         }
+        .toolbarBackground(VantaTheme.background, for: .navigationBar)
     }
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 18) {
             Image(systemName: "checkmark")
                 .font(.system(size: 20, weight: .semibold))
-                .foregroundStyle(Color.blue)
+                .foregroundStyle(VantaTheme.accent)
                 .frame(width: 44, height: 44)
-                .overlay(Circle().stroke(Color.blue, lineWidth: 1.5))
+                .overlay(Circle().stroke(VantaTheme.accent, lineWidth: 1.5))
                 .accessibilityLabel("Scan successful")
 
             Text("Scan complete")
                 .font(.system(.title, design: .rounded).weight(.bold))
-                .foregroundStyle(Color(.label))
+                .foregroundStyle(VantaTheme.textPrimary)
             Text(hrvMs == nil ? "Here’s your heart rate." : "Here’s your heart rate and HRV.")
                 .font(.title3)
-                .foregroundStyle(Color(.secondaryLabel))
+                .foregroundStyle(VantaTheme.textMuted)
         }
     }
 
@@ -86,14 +88,14 @@ struct VitalsResultView: View {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(bpm.formatted(.number.precision(.fractionLength(0))))
                     .font(.system(.largeTitle, design: .rounded).weight(.bold))
-                    .foregroundStyle(Color(.label))
+                    .foregroundStyle(VantaTheme.textPrimary)
                 Text("BPM")
                     .font(.title3.weight(.semibold))
-                    .foregroundStyle(Color(.secondaryLabel))
+                    .foregroundStyle(VantaTheme.textMuted)
             }
             Text("Heart rate")
                 .font(.subheadline)
-                .foregroundStyle(Color(.secondaryLabel))
+                .foregroundStyle(VantaTheme.textMuted)
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Heart rate, \(bpm.formatted(.number.precision(.fractionLength(0)))) beats per minute")
@@ -105,19 +107,19 @@ struct VitalsResultView: View {
                 if let hrvMs {
                     Text(hrvMs.formatted(.number.precision(.fractionLength(0...1))))
                         .font(.system(.title, design: .rounded).weight(.bold))
-                        .foregroundStyle(Color(.label))
+                        .foregroundStyle(VantaTheme.textPrimary)
                     Text("ms")
                         .font(.title3.weight(.semibold))
-                        .foregroundStyle(Color(.secondaryLabel))
+                        .foregroundStyle(VantaTheme.textMuted)
                 } else {
                     Text("Unavailable")
                         .font(.system(.title, design: .rounded).weight(.bold))
-                        .foregroundStyle(Color(.secondaryLabel))
+                        .foregroundStyle(VantaTheme.textMuted)
                 }
             }
             Text("HRV (SDNN)")
                 .font(.subheadline)
-                .foregroundStyle(Color(.secondaryLabel))
+                .foregroundStyle(VantaTheme.textMuted)
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(
@@ -133,24 +135,25 @@ struct VitalsResultView: View {
                 let position = indicatorPosition(in: width)
                 ZStack(alignment: .leading) {
                     HStack(spacing: 0) {
-                        Color.blue.opacity(0.58).frame(width: width * lowFraction)
-                        Color.green.opacity(0.58).frame(width: width * typicalFraction)
-                        Color.orange.opacity(0.68)
+                        VantaTheme.gaugeGradientStart.opacity(0.55).frame(width: width * lowFraction)
+                        LinearGradient(colors: [VantaTheme.gaugeGradientStart, VantaTheme.gaugeGradientEnd], startPoint: .leading, endPoint: .trailing)
+                            .frame(width: width * typicalFraction)
+                        VantaTheme.highlight.opacity(0.85)
                     }
                     .clipShape(Capsule())
                     .frame(height: 14)
 
                     VStack(spacing: 4) {
                         Circle()
-                            .fill(Color(.systemBackground))
+                            .fill(VantaTheme.background)
                             .frame(width: 20, height: 20)
-                            .overlay(Circle().stroke(Color(.label), lineWidth: 2))
+                            .overlay(Circle().stroke(VantaTheme.textPrimary, lineWidth: 2))
                             .overlay {
                                 Text(bpm.formatted(.number.precision(.fractionLength(0))))
                                     .font(.system(size: 7, weight: .bold, design: .rounded))
-                                    .foregroundStyle(Color(.label))
+                                    .foregroundStyle(VantaTheme.textPrimary)
                             }
-                        Rectangle().fill(Color(.label)).frame(width: 2, height: 26)
+                        Rectangle().fill(VantaTheme.textPrimary).frame(width: 2, height: 26)
                     }
                     .frame(width: 24)
                     .offset(x: max(0, min(width - 24, position - 12)))
@@ -169,7 +172,7 @@ struct VitalsResultView: View {
                 Text("\(Int(thresholds.displayedMaximum))")
             }
             .font(.caption)
-            .foregroundStyle(Color(.secondaryLabel))
+            .foregroundStyle(VantaTheme.textMuted)
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Heart rate spectrum. Low, typical, and high ranges. Current value \(bpm.formatted(.number.precision(.fractionLength(0)))) BPM.")
@@ -180,13 +183,13 @@ struct VitalsResultView: View {
             Text(status.title).font(.headline).foregroundStyle(status.color)
             Text(status.message)
                 .font(.subheadline)
-                .foregroundStyle(Color(.label))
+                .foregroundStyle(VantaTheme.textPrimary)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(status.color.opacity(0.10))
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(status.color.opacity(0.28), lineWidth: 1))
+        .background(VantaTheme.surface)
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(VantaTheme.border, lineWidth: 1))
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(status.title). \(status.message)")
@@ -194,21 +197,14 @@ struct VitalsResultView: View {
     }
 
     private var actions: some View {
-        VStack(spacing: 14) {
-            Button("Done") { dismiss() }
-                .font(.body.weight(.semibold))
-                .foregroundStyle(.white)
-                .frame(maxWidth: .infinity, minHeight: 52)
-                .background(Color.blue, in: RoundedRectangle(cornerRadius: 12))
-                .accessibilityHint("Dismisses the scan result")
-
-            Button("Scan again") {
-                if let onScanAgain { onScanAgain() } else { dismiss() }
-            }
-            .font(.body.weight(.semibold))
-            .foregroundStyle(Color.blue)
-            .frame(minHeight: 44)
+        Button("Done") {
+            if let onScanAgain { onScanAgain() } else { dismiss() }
         }
+        .font(.body.weight(.semibold))
+        .foregroundStyle(VantaTheme.background)
+        .frame(maxWidth: .infinity, minHeight: 52)
+        .background(VantaTheme.accent, in: RoundedRectangle(cornerRadius: 12))
+        .accessibilityHint("Dismisses the scan result")
     }
 
     private var lowFraction: CGFloat { fraction(from: thresholds.displayedMinimum, to: thresholds.lowUpperBound) }
@@ -246,9 +242,9 @@ private enum HeartRateStatus {
 
     var color: Color {
         switch self {
-        case .below: .blue
-        case .within: .green
-        case .above: .orange
+        case .below: VantaTheme.gaugeGradientStart
+        case .within: VantaTheme.accent
+        case .above: VantaTheme.highlight
         }
     }
 }

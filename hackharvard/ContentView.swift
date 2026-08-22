@@ -14,26 +14,16 @@ struct ContentView: View {
                     Label("Home", systemImage: "house")
                 }
                 .tag(0)
-            InsightsView()
-                .tabItem {
-                    Label("Insights", systemImage: "chart.bar")
-                }
-                .tag(1)
             CameraView()
                 .tabItem {
                     Label("Scan", systemImage: "camera")
                 }
+                .tag(1)
+            InsightsView()
+                .tabItem {
+                    Label("Insights", systemImage: "chart.bar")
+                }
                 .tag(2)
-            HistoryView()
-                .tabItem {
-                    Label("History", systemImage: "list.dash")
-                }
-                .tag(3)
-            ProfileView()
-                .tabItem {
-                    Label("Profile", systemImage: "person")
-                }
-                .tag(4)
         }
     }
 }

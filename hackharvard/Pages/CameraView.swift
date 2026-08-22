@@ -31,11 +31,14 @@ struct CameraView: View {
             .padding(.horizontal, 20)
             .padding(.bottom, 24)
         }
+        .background(VantaTheme.background.ignoresSafeArea())
+        .scrollBounceBehavior(.basedOnSize)
         .safeAreaInset(edge: .bottom) {
             continueButton
                 .padding(.horizontal, 20)
                 .padding(.top, 12)
                 .padding(.bottom, 8)
+                .background(VantaTheme.background.ignoresSafeArea(edges: .bottom))
         }
         .alert("Camera Unavailable", isPresented: $isShowingCameraUnavailableAlert) {
             Button("OK", role: .cancel) {}
@@ -50,10 +53,13 @@ struct CameraView: View {
         .overlay {
             if isProcessing {
                 ZStack {
-                    Color.black.opacity(0.4).ignoresSafeArea()
+                    VantaTheme.background.opacity(0.75).ignoresSafeArea()
                     ProgressView("Analyzing video…")
+                        .tint(VantaTheme.accent)
+                        .foregroundStyle(VantaTheme.textPrimary)
                         .padding(24)
-                        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16))
+                        .background(VantaTheme.surface, in: RoundedRectangle(cornerRadius: 16))
+                        .overlay(RoundedRectangle(cornerRadius: 16).stroke(VantaTheme.border, lineWidth: 1))
                 }
             }
         }
@@ -130,14 +136,15 @@ struct CameraView: View {
     private var headerSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Upload a video \(Image(systemName: "video.fill"))")
-                .font(.system(size: 28, weight: .bold))
+                .font(.system(size: 28, weight: .bold, design: .rounded))
                 .lineSpacing(4)
+                .foregroundStyle(VantaTheme.textPrimary)
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityLabel("Upload a video")
 
             Text("Record 15–45 seconds of a still face. Your data stays on this scan.")
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(VantaTheme.textMuted)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -155,10 +162,10 @@ struct CameraView: View {
     @ViewBuilder
     private var uploadAreaContent: some View {
         RoundedRectangle(cornerRadius: 20)
-            .fill(.thinMaterial)
+            .fill(VantaTheme.surface)
             .overlay(
                 RoundedRectangle(cornerRadius: 20)
-                    .strokeBorder(.secondary.opacity(0.3), lineWidth: 1)
+                    .strokeBorder(VantaTheme.border, lineWidth: 1)
             )
             .frame(height: 220)
             .overlay {
@@ -172,13 +179,13 @@ struct CameraView: View {
                         .overlay(alignment: .topTrailing) {
                             Image(systemName: "checkmark.circle.fill")
                                 .font(.title2)
-                                .foregroundStyle(.white, .green)
+                                .foregroundStyle(VantaTheme.background, VantaTheme.accent)
                                 .padding(10)
                         }
                         .overlay {
                             Image(systemName: "play.circle.fill")
                                 .font(.system(size: 36))
-                                .foregroundStyle(.white)
+                                .foregroundStyle(VantaTheme.textPrimary)
                         }
                 } else {
                     VStack(spacing: 10) {
@@ -187,7 +194,7 @@ struct CameraView: View {
                         Text("Select file")
                             .font(.subheadline.weight(.medium))
                     }
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(VantaTheme.textMuted)
                 }
             }
     }
@@ -198,7 +205,7 @@ struct CameraView: View {
         VStack(spacing: 20) {
             Text("or")
                 .font(.footnote)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(VantaTheme.textMuted)
 
             Button {
                 requestCameraAccessAndShowCapture()
@@ -208,10 +215,11 @@ struct CameraView: View {
                     Text("Open Camera & Record Video")
                         .font(.body.weight(.semibold))
                 }
+                .foregroundStyle(VantaTheme.textPrimary)
                 .frame(maxWidth: .infinity)
                 .frame(height: 54)
-                .background(.thinMaterial, in: Capsule())
-                .overlay(Capsule().strokeBorder(.secondary.opacity(0.3), lineWidth: 1))
+                .background(VantaTheme.surface, in: Capsule())
+                .overlay(Capsule().strokeBorder(VantaTheme.border, lineWidth: 1))
             }
             .accessibilityLabel("Open camera and record a video")
         }
@@ -227,10 +235,10 @@ struct CameraView: View {
         } label: {
             Text("Continue")
                 .font(.body.weight(.semibold))
-                .foregroundStyle(.white)
+                .foregroundStyle(VantaTheme.background)
                 .frame(maxWidth: .infinity)
                 .frame(height: 54)
-                .background(selectedVideoURL == nil ? Color.accentColor.opacity(0.4) : Color.accentColor, in: Capsule())
+                .background(selectedVideoURL == nil ? VantaTheme.accent.opacity(0.4) : VantaTheme.accent, in: Capsule())
         }
         .buttonStyle(.plain)
         .disabled(selectedVideoURL == nil)
