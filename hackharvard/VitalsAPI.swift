@@ -42,9 +42,10 @@ struct VitalsAPIError: Decodable, Error {
 }
 
 enum VitalsAPI {
-    // ponytail: hardcoded for local dev (loopback is ATS-exempt, no Info.plist needed).
-    // Point this at a real host before testing on a physical device off your Mac's network.
-    static var baseURL = URL(string: "http://127.0.0.1:8000")!
+    // ponytail: hardcoded for local dev. Phone and Mac must be on the same Wi-Fi;
+    // update this IP if your Mac's LAN address changes (check with `ipconfig getifaddr en0`).
+    // Requires an ATS exception for arbitrary local networking in Info.plist.
+    static var baseURL = URL(string: "http://172.20.10.2:8000")!
 
     static func process(videoAt fileURL: URL) async throws -> VitalsResponse {
         var request = URLRequest(url: baseURL.appendingPathComponent("v1/process"))
