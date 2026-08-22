@@ -104,22 +104,11 @@ enum VitalsAPI {
 
         let outputURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("prepared-\(UUID().uuidString).mp4")
-        exporter.outputURL = outputURL
-        exporter.outputFileType = .mp4
         exporter.shouldOptimizeForNetworkUse = true
 
-        try await withCheckedThrowingContinuation { continuation in
-            exporter.exportAsynchronously {
-                switch exporter.status {
-                case .completed:
-                    continuation.resume(returning: ())
-                case .failed, .cancelled:
-                    continuation.resume(throwing: exporter.error ?? URLError(.cannotCreateFile))
-                default:
-                    continuation.resume(throwing: URLError(.cannotDecodeContentData))
-                }
-            }
-        }
+        // The async export API owns the operation's concurrency and surfaces
+        // failures directly, avoiding the deprecated callback/status access.
+        try await exporter.export(to: outputURL, as: .mp4)
 
         return outputURL
     }
