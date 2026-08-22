@@ -2,6 +2,7 @@ import tempfile
 from pathlib import Path
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 
 from app.pipeline.estimate import ProcessError, estimate_vitals
@@ -52,7 +53,9 @@ async def debug_rgb(video: UploadFile = File(...)):
 async def process_video(video: UploadFile = File(...)):
     tmp_path = await _save_upload(video)
     try:
-        return estimate_vitals(tmp_path)
+        # Video decoding and MediaPipe analysis are CPU-heavy synchronous work.
+        # Keep them off the event loop so /health and other requests remain responsive.
+        return await run_in_threadpool(estimate_vitals, tmp_path)
     except ProcessError as exc:
         return JSONResponse(
             status_code=400,
