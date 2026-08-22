@@ -14,6 +14,10 @@ struct CameraView: View {
     @State private var isShowingCamera = false
     @State private var isShowingCameraUnavailableAlert = false
     @State private var cameraUnavailableMessage = ""
+    @State private var isProcessing = false
+    @State private var vitalsResult: VitalsResponse?
+    @State private var processingErrorMessage: String?
+    @State private var isShowingProcessingErrorAlert = false
 
     var body: some View {
         ScrollView {
@@ -40,6 +44,24 @@ struct CameraView: View {
         } message: {
             Text(cameraUnavailableMessage)
         }
+        .alert("Couldn't Process Video", isPresented: $isShowingProcessingErrorAlert) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(processingErrorMessage ?? "")
+        }
+        .overlay {
+            if isProcessing {
+                ZStack {
+                    Color.black.opacity(0.4).ignoresSafeArea()
+                    ProgressView("Analyzing video…")
+                        .padding(24)
+                        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16))
+                }
+            }
+        }
+        .sheet(item: $vitalsResult) { result in
+            VitalsResultView(result: result)
+        }
         .fullScreenCover(isPresented: $isShowingCamera) {
             VideoRecorderView(maxDuration: 45) { url in
                 selectedVideoURL = url
@@ -55,6 +77,22 @@ struct CameraView: View {
                 guard let movie = try? await newItem?.loadTransferable(type: Movie.self) else { return }
                 selectedVideoURL = movie.url
                 selectedVideoThumbnail = await Self.generateThumbnail(for: movie.url)
+            }
+        }
+    }
+
+    private func startProcessing(_ videoURL: URL) {
+        isProcessing = true
+        Task {
+            defer { isProcessing = false }
+            do {
+                vitalsResult = try await VitalsAPI.process(videoAt: videoURL)
+            } catch let apiError as VitalsAPIError {
+                processingErrorMessage = apiError.message
+                isShowingProcessingErrorAlert = true
+            } catch {
+                processingErrorMessage = "Could not reach the server. Check your connection and try again."
+                isShowingProcessingErrorAlert = true
             }
         }
     }
@@ -191,6 +229,7 @@ struct CameraView: View {
         Button {
             if let selectedVideoURL {
                 onContinue(selectedVideoURL)
+                startProcessing(selectedVideoURL)
             }
         } label: {
             Text("Continue")
