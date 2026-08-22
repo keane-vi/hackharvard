@@ -1,2 +1,6 @@
 xcuserdata/
 *.xcuserstate
+
+backend/.venv/
+__pycache__/
+*.pyc
