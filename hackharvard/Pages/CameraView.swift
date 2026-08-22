@@ -19,6 +19,8 @@ struct CameraView: View {
     @State private var processingErrorMessage: String?
     @State private var isShowingProcessingErrorAlert = false
 
+    private let heartRateThresholds = HeartRateThresholds()
+
     var body: some View {
         ScrollView {
             VStack(spacing: 0) {
@@ -60,7 +62,12 @@ struct CameraView: View {
             }
         }
         .sheet(item: $vitalsResult) { result in
-            VitalsResultView(result: result)
+            VitalsResultView(result: result, thresholds: heartRateThresholds) {
+                vitalsResult = nil
+                selectedVideoURL = nil
+                selectedVideoThumbnail = nil
+                photosPickerItem = nil
+            }
         }
         .fullScreenCover(isPresented: $isShowingCamera) {
             VideoRecorderView(maxDuration: 45) { url in
@@ -86,7 +93,13 @@ struct CameraView: View {
         Task {
             defer { isProcessing = false }
             do {
-                vitalsResult = try await VitalsAPI.process(videoAt: videoURL)
+                let response = try await VitalsAPI.process(videoAt: videoURL)
+                guard response.hr_bpm != nil else {
+                    processingErrorMessage = "The scan finished without a heart-rate measurement. Try a shorter, steadier video and check again."
+                    isShowingProcessingErrorAlert = true
+                    return
+                }
+                vitalsResult = response
             } catch let apiError as VitalsAPIError {
                 processingErrorMessage = apiError.message
                 isShowingProcessingErrorAlert = true
