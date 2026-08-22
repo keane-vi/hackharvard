@@ -1,10 +1,3 @@
-//
-//  CameraView.swift
-//  hackharvard
-//
-//  Created by Nanond Nimitkul on 22/8/26.
-//
-
 import SwiftUI
 import PhotosUI
 import UIKit
@@ -66,10 +59,11 @@ struct CameraView: View {
         }
     }
 
+    // grabs the first frame of the video so we have something to show in the upload tile
     private static func generateThumbnail(for url: URL) async -> UIImage? {
         let asset = AVURLAsset(url: url)
         let generator = AVAssetImageGenerator(asset: asset)
-        generator.appliesPreferredTrackTransform = true
+        generator.appliesPreferredTrackTransform = true // otherwise portrait videos come out sideways
         return await withCheckedContinuation { continuation in
             generator.generateCGImageAsynchronously(for: .zero) { cgImage, _, _ in
                 if let cgImage {
@@ -103,8 +97,7 @@ struct CameraView: View {
 
     private var headerSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            (Text("Upload a video ")
-                + Text(Image(systemName: "video.fill")))
+            Text("Upload a video \(Image(systemName: "video.fill"))")
                 .font(.system(size: 28, weight: .bold))
                 .lineSpacing(4)
                 .fixedSize(horizontal: false, vertical: true)
@@ -215,6 +208,7 @@ struct CameraView: View {
     // MARK: Camera permission
 
     private func requestCameraAccessAndShowCapture() {
+        // the simulator has no camera at all, so check that before touching permissions
         guard UIImagePickerController.isSourceTypeAvailable(.camera) else {
             cameraUnavailableMessage = "This device or simulator doesn't have a camera available."
             isShowingCameraUnavailableAlert = true
@@ -244,6 +238,8 @@ struct CameraView: View {
 
 // MARK: - Video transfer
 
+// PhotosPickerItem can't just hand us a `Data` blob for a video (it's too big / lives
+// in iCloud), so this teaches it to copy the picked file to a local temp URL instead.
 private struct Movie: Transferable {
     let url: URL
 
@@ -263,6 +259,7 @@ private struct Movie: Transferable {
 
 // MARK: - Video recorder picker
 
+// SwiftUI has no native camera view, so this wraps the old UIKit picker to get one.
 private struct VideoRecorderView: UIViewControllerRepresentable {
     let maxDuration: TimeInterval
     let onFinish: (URL) -> Void
