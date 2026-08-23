@@ -53,7 +53,8 @@ struct InteractiveTrendChart: View {
                     .gesture(
                         DragGesture(minimumDistance: 0)
                             .onChanged { value in
-                                guard let date: Date = proxy.value(atX: value.location.x - geo[proxy.plotAreaFrame].origin.x) else { return }
+                                guard let plotFrame = proxy.plotFrame,
+                                      let date: Date = proxy.value(atX: value.location.x - geo[plotFrame].origin.x) else { return }
                                 selected = points.min { abs($0.date.timeIntervalSince(date)) < abs($1.date.timeIntervalSince(date)) }
                             }
                     )
