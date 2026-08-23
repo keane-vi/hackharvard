@@ -303,10 +303,9 @@ private struct Movie: Transferable {
 // MARK: - Video recorder
 
 // UIImagePickerController locks exposure/white-balance the instant it opens, before the
-// sensor has adjusted to the subject's skin tone — that miscalibrated first fraction of a
-// second is baked into the whole clip and throws off the rPPG signal. This wraps a manual
-// AVCaptureSession instead: it lets auto-exposure/auto-WB converge for a beat, locks them
-// so lighting doesn't drift mid-recording, and only then starts writing to disk.
+// sensor has adjusted to the subject's skin tone. This wraps a manual AVCaptureSession:
+// the camera gets a short setup window to meter the subject, then every setting that can
+// change pixel values or geometry is fixed before the clip is written to disk.
 private struct VideoRecorderView: UIViewControllerRepresentable {
     let maxDuration: TimeInterval
     let onFinish: (URL) -> Void
@@ -328,8 +327,11 @@ private final class CustomCameraViewController: UIViewController, AVCaptureFileO
     var onFinish: ((URL) -> Void)?
     var onCancel: (() -> Void)?
 
-    // ponytail: fixed convergence window, not a metered "confidence" check — tune this if devices still show a color/exposure shift at the start of clips.
-    private let convergenceDelay: TimeInterval = 0.6
+    // Fixed setup window, not a metered "confidence" check. The recording never starts
+    // while any of the camera's convergence behavior is still active.
+    // Give the camera time to start adjusting, then use its adjustment flags below rather
+    // than guessing when the lens has settled.
+    private let convergenceDelay: TimeInterval = 0.5
 
     private let session = AVCaptureSession()
     private let movieOutput = AVCaptureMovieFileOutput()
@@ -427,6 +429,7 @@ private final class CustomCameraViewController: UIViewController, AVCaptureFileO
     private func configureSession() {
         session.beginConfiguration()
         session.sessionPreset = .high
+        session.automaticallyConfiguresCaptureDeviceForWideColor = false
 
         guard addCameraInput(position: cameraPosition) else {
             session.commitConfiguration()
@@ -441,10 +444,12 @@ private final class CustomCameraViewController: UIViewController, AVCaptureFileO
         }
         session.addOutput(movieOutput)
         movieOutput.maxRecordedDuration = CMTime(seconds: maxDuration, preferredTimescale: 600)
+        configureVideoConnection()
 
         session.commitConfiguration()
         session.startRunning()
 
+        prepareCameraForConvergence()
         beginConvergence()
     }
 
@@ -460,32 +465,111 @@ private final class CustomCameraViewController: UIViewController, AVCaptureFileO
         return true
     }
 
-    // Auto-exposure/auto-WB are already running (their default mode) as soon as a camera
-    // input is added; give them `convergenceDelay` to settle on the subject before locking.
-    private func beginConvergence() {
-        sessionQueue.asyncAfter(deadline: .now() + convergenceDelay) { [weak self] in
-            self?.lockExposureAndWhiteBalance()
-        }
-    }
-
-    private func lockExposureAndWhiteBalance() {
+    private func prepareCameraForConvergence() {
         guard let device else { return }
         do {
             try device.lockForConfiguration()
+            if device.isFocusModeSupported(.continuousAutoFocus) {
+                device.focusMode = .continuousAutoFocus
+            }
+            if device.isFocusPointOfInterestSupported {
+                device.focusPointOfInterest = CGPoint(x: 0.5, y: 0.5)
+            }
+            if device.isExposureModeSupported(.continuousAutoExposure) {
+                device.exposureMode = .continuousAutoExposure
+            }
+            if device.isExposurePointOfInterestSupported {
+                device.exposurePointOfInterest = CGPoint(x: 0.5, y: 0.5)
+            }
+            if device.isWhiteBalanceModeSupported(.continuousAutoWhiteBalance) {
+                device.whiteBalanceMode = .continuousAutoWhiteBalance
+            }
+            device.unlockForConfiguration()
+        } catch {
+            // The device's defaults remain usable if an optional setup setting fails.
+        }
+    }
+
+    // Exposure/WB are stabilized before recording. Focus stays continuous because some
+    // devices can report a settled focus position and still produce a bad locked lens.
+    private func beginConvergence() {
+        sessionQueue.asyncAfter(deadline: .now() + convergenceDelay) { [weak self] in
+            self?.waitForCameraToSettle(stableSamples: 0, attempts: 0)
+        }
+    }
+
+    private func waitForCameraToSettle(stableSamples: Int, attempts: Int) {
+        guard let device else { return }
+
+        let cameraIsSettled = !device.isAdjustingFocus
+            && !device.isAdjustingExposure
+            && !device.isAdjustingWhiteBalance
+        let updatedStableSamples = cameraIsSettled ? stableSamples + 1 : 0
+
+        // Require several consecutive settled samples. The attempt limit prevents a
+        // device that never reports convergence from leaving the Record button disabled.
+        if updatedStableSamples >= 3 || attempts >= 30 {
+            lockCameraForSignalCapture()
+            return
+        }
+
+        sessionQueue.asyncAfter(deadline: .now() + 0.15) { [weak self] in
+            self?.waitForCameraToSettle(
+                stableSamples: updatedStableSamples,
+                attempts: attempts + 1
+            )
+        }
+    }
+
+    private func lockCameraForSignalCapture() {
+        guard let device else { return }
+        do {
+            try device.lockForConfiguration()
+
+            // Keep autofocus active during recording. This avoids permanently freezing
+            // a bad lens position on devices whose focus lock state is unreliable.
+            if device.isFocusModeSupported(.continuousAutoFocus) {
+                device.focusMode = .continuousAutoFocus
+            }
             if device.isExposureModeSupported(.locked) {
                 device.exposureMode = .locked
             }
             if device.isWhiteBalanceModeSupported(.locked) {
                 device.whiteBalanceMode = .locked
             }
+            device.videoZoomFactor = 1.0
+
+            // Keep frame timing and low-light behavior deterministic across the clip.
+            let frameDuration = CMTime(value: 1, timescale: 30)
+            if device.activeFormat.videoSupportedFrameRateRanges.contains(where: {
+                $0.minFrameRate <= 30 && $0.maxFrameRate >= 30
+            }) {
+                device.activeVideoMinFrameDuration = frameDuration
+                device.activeVideoMaxFrameDuration = frameDuration
+            }
+            if device.isLowLightBoostSupported {
+                device.automaticallyEnablesLowLightBoostWhenAvailable = false
+            }
+            device.automaticallyAdjustsVideoHDREnabled = false
+            if device.isVideoHDREnabled {
+                device.isVideoHDREnabled = false
+            }
             device.unlockForConfiguration()
         } catch {
-            // Locking failed — recording still works, just without the stabilized exposure/WB.
+            // The camera may still record if a device rejects an optional setting.
         }
+        configureVideoConnection()
         DispatchQueue.main.async { [weak self] in
             self?.statusLabel.text = "Ready"
             self?.recordButton.isEnabled = true
             self?.recordButton.alpha = 1
+        }
+    }
+
+    private func configureVideoConnection() {
+        guard let connection = movieOutput.connection(with: .video) else { return }
+        if connection.isVideoStabilizationSupported {
+            connection.preferredVideoStabilizationMode = .off
         }
     }
 
@@ -523,6 +607,7 @@ private final class CustomCameraViewController: UIViewController, AVCaptureFileO
             }
             _ = self.addCameraInput(position: self.cameraPosition)
             self.session.commitConfiguration()
+            self.prepareCameraForConvergence()
             self.beginConvergence()
             DispatchQueue.main.async { self.switchCameraButton.isEnabled = true }
         }

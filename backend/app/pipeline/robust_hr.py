@@ -52,9 +52,20 @@ def robust_heart_rate(trace: dict) -> float | None:
                 abs(pos_bpm - chrom_bpm) <= AGREE_BPM
                 and min(pos_snr, chrom_snr) >= WINDOW_SNR_MIN
             ):
-                agreed.append(0.5 * (pos_bpm + chrom_bpm))
+                # Regions do not have equal signal quality. A forehead ROI can
+                # contain hair/shadow while one cheek remains clean; taking a
+                # median across regions lets a coherent low-frequency artifact
+                # pull the estimate down. Keep the estimate and its weakest
+                # method SNR so the best region can represent this window.
+                agreed.append(
+                    (
+                        0.5 * (pos_bpm + chrom_bpm),
+                        min(pos_snr, chrom_snr),
+                    )
+                )
         if agreed:
-            stable.append(float(np.median(agreed)))
+            best_bpm, _ = max(agreed, key=lambda candidate: candidate[1])
+            stable.append(float(best_bpm))
     if not stable:
         return None
     return float(np.median(stable))
